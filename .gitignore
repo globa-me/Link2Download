@@ -1,0 +1,6 @@
+.DS_Store
+build/
+*.dmg
+*.zip
+Resources/bin/*
+!Resources/bin/.keep
