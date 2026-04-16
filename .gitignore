@@ -10,5 +10,6 @@ windows/.vs/
 windows/**/bin/
 windows/**/obj/
 windows/**/TestResults/
+windows/runtime/win-x64/*.exe
 *.user
 *.suo

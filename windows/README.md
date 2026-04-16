@@ -1,20 +1,17 @@
 # Windows Workspace
 
-This folder prepares the repository for a native Windows port of Link2Download.
+This folder contains the native Windows version of Link2Download.
 
 ## What Is Here
 
-- `bootstrap_windows_solution.ps1`: creates the initial Windows solution and base projects
-- `CODEX_TASK.md`: a ready-to-paste task prompt for Codex on a Windows machine
-- `runtime/`: expected layout for Windows runtime binaries
-
-## What Is Not Here Yet
-
-- no runnable Windows app yet
-- no `.sln` yet
-- no bundled Windows binaries yet
-
-Those pieces should be created on the Windows machine after cloning the repository.
+- `Link2Download.Windows.sln`: Windows solution
+- `src/Link2Download.Windows.App`: WPF application shell and view models
+- `src/Link2Download.Windows.Core`: queue, models, settings shape, history model
+- `src/Link2Download.Windows.Infrastructure`: JSON persistence, diagnostics, `yt-dlp` runtime integration
+- `tests/Link2Download.Windows.Tests`: queue, persistence, parser tests
+- `bootstrap_windows_solution.ps1`: idempotent bootstrap for regenerating the solution structure
+- `CODEX_TASK.md`: original Codex handoff task
+- `runtime/`: expected runtime-tool layout
 
 ## Recommended Environment On Windows
 
@@ -34,6 +31,8 @@ powershell -ExecutionPolicy Bypass -File .\windows\bootstrap_windows_solution.ps
 
 After that, open the generated solution under `windows/`.
 
+If the solution already exists, the script simply validates and fills in any missing projects/references.
+
 ## Runtime Tool Layout
 
 Expected location for external tools:
@@ -45,6 +44,27 @@ windows/runtime/win-x64/ffprobe.exe
 ```
 
 Keep the binaries replaceable. Do not hardcode system-only install paths as the primary strategy.
+
+Optional but useful:
+
+- `deno.exe` on `PATH` for compatibility with some newer `yt-dlp` YouTube extraction flows
+
+The app does not hardcode `deno.exe`, but `yt-dlp` can use it automatically when present.
+
+## Build And Run
+
+From the repository root:
+
+```powershell
+dotnet build .\windows\Link2Download.Windows.sln
+dotnet run --project .\windows\src\Link2Download.Windows.App
+```
+
+## Persistence
+
+- settings: `%AppData%\Link2Download\settings.json`
+- history: `%AppData%\Link2Download\history.json`
+- diagnostics log: `%LocalAppData%\Link2Download\logs\app.log`
 
 ## First Build Goal
 
