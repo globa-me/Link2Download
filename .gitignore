@@ -1,6 +1,14 @@
 .DS_Store
+Thumbs.db
+Desktop.ini
 build/
 *.dmg
 *.zip
 Resources/bin/*
 !Resources/bin/.keep
+windows/.vs/
+windows/**/bin/
+windows/**/obj/
+windows/**/TestResults/
+*.user
+*.suo

@@ -2,6 +2,20 @@
 
 Native macOS desktop app for downloading video/audio from YouTube, Vimeo, TikTok, Instagram, and other services supported by `yt-dlp`.
 
+## Windows Port Preparation
+
+- The repository now includes a Windows-port handoff for future Codex work.
+- Start with:
+  - `docs/windows-port-plan.md`
+  - `windows/README.md`
+  - `windows/CODEX_TASK.md`
+- Windows bootstrap script:
+  - `windows/bootstrap_windows_solution.ps1`
+- Recommended Windows target stack:
+  - `.NET 8` + `WPF`
+
+The application is still macOS-only today. The Windows files in this repository are preparation and implementation guidance, not a completed Windows build.
+
 ## Download (latest DMG)
 
 - Latest release: https://github.com/globa-me/Link2Download/releases/latest
@@ -133,4 +147,6 @@ open /Applications/Link2Download.app
 - `Resources/` - runtime helper files
 - `Resources/bin/` - embedded `yt-dlp` and `ffmpeg` binaries
 - `scripts/` - build and packaging scripts
+- `docs/windows-port-plan.md` - Windows migration plan and feature map
+- `windows/` - Windows bootstrap files, runtime layout, and Codex handoff
 - `build/` - generated artifacts
