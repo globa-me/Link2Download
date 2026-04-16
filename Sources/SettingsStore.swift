@@ -5,30 +5,40 @@ import Combine
 final class SettingsStore: ObservableObject {
     @Published var language: AppLanguage
     @Published var smartModeEnabled: Bool
+    @Published var appleTranscodeEnabled: Bool
     @Published var kind: DownloadKind
     @Published var quality: QualityPreset
     @Published var videoFormat: VideoFormat
     @Published var audioFormat: AudioFormat
     @Published var saveDirectory: String
     @Published var speedLimit: SpeedLimitPreset
+    @Published var transcodeBitrate: TranscodeBitratePreset
     @Published var cookieSource: BrowserCookieSource
     @Published var includeSubtitles: Bool
     @Published var includeAdditionalAudioTracks: Bool
 
     private let defaultsKey = "link2download.preferences"
+    private let cookieAutoMigrationKey = "link2download.preferences.cookiesAutoMigration.v1"
     private var cancellables = Set<AnyCancellable>()
     private var isProgrammaticSettingsUpdate = false
 
     init() {
-        let loaded = SettingsStore.loadFromDefaults(key: defaultsKey) ?? .default()
+        var loaded = SettingsStore.loadFromDefaults(key: defaultsKey) ?? .default()
+        let defaults = UserDefaults.standard
+        if !defaults.bool(forKey: cookieAutoMigrationKey), loaded.cookieSource == .none {
+            loaded.cookieSource = .auto
+            defaults.set(true, forKey: cookieAutoMigrationKey)
+        }
         self.language = loaded.language
         self.smartModeEnabled = loaded.smartModeEnabled
+        self.appleTranscodeEnabled = loaded.appleTranscodeEnabled
         self.kind = loaded.kind
         self.quality = loaded.quality
         self.videoFormat = loaded.videoFormat
         self.audioFormat = loaded.audioFormat
         self.saveDirectory = loaded.saveDirectory
         self.speedLimit = loaded.speedLimit
+        self.transcodeBitrate = loaded.transcodeBitrate
         self.cookieSource = loaded.cookieSource
         self.includeSubtitles = loaded.includeSubtitles
         self.includeAdditionalAudioTracks = loaded.includeAdditionalAudioTracks
@@ -46,12 +56,14 @@ final class SettingsStore: ObservableObject {
         DownloadPreferences(
             language: language,
             smartModeEnabled: smartModeEnabled,
+            appleTranscodeEnabled: appleTranscodeEnabled,
             kind: kind,
             quality: quality,
             videoFormat: videoFormat,
             audioFormat: audioFormat,
             saveDirectory: saveDirectory,
             speedLimit: speedLimit,
+            transcodeBitrate: transcodeBitrate,
             cookieSource: cookieSource,
             includeSubtitles: includeSubtitles,
             includeAdditionalAudioTracks: includeAdditionalAudioTracks
@@ -63,12 +75,14 @@ final class SettingsStore: ObservableObject {
         withProgrammaticSettingsUpdate {
             language = defaults.language
             smartModeEnabled = defaults.smartModeEnabled
+            appleTranscodeEnabled = defaults.appleTranscodeEnabled
             kind = defaults.kind
             quality = defaults.quality
             videoFormat = defaults.videoFormat
             audioFormat = defaults.audioFormat
             saveDirectory = defaults.saveDirectory
             speedLimit = defaults.speedLimit
+            transcodeBitrate = defaults.transcodeBitrate
             cookieSource = defaults.cookieSource
             includeSubtitles = defaults.includeSubtitles
             includeAdditionalAudioTracks = defaults.includeAdditionalAudioTracks
@@ -88,11 +102,13 @@ final class SettingsStore: ObservableObject {
         let defaults = DownloadPreferences.default()
         withProgrammaticSettingsUpdate {
             smartModeEnabled = true
+            appleTranscodeEnabled = defaults.appleTranscodeEnabled
             kind = defaults.kind
             quality = defaults.quality
             videoFormat = defaults.videoFormat
             audioFormat = defaults.audioFormat
             speedLimit = defaults.speedLimit
+            transcodeBitrate = defaults.transcodeBitrate
             cookieSource = defaults.cookieSource
             includeSubtitles = defaults.includeSubtitles
             includeAdditionalAudioTracks = defaults.includeAdditionalAudioTracks
@@ -198,6 +214,27 @@ final class SettingsStore: ObservableObject {
         }
     }
 
+    func label(for transcodeBitrate: TranscodeBitratePreset) -> String {
+        switch transcodeBitrate {
+        case .autoHigh:
+            return t("transcode.bitrate.auto")
+        case .mbps6:
+            return "6 Mbps"
+        case .mbps10:
+            return "10 Mbps"
+        case .mbps16:
+            return "16 Mbps"
+        case .mbps24:
+            return "24 Mbps"
+        case .mbps35:
+            return "35 Mbps"
+        case .mbps50:
+            return "50 Mbps"
+        case .mbps80:
+            return "80 Mbps"
+        }
+    }
+
     func label(for stage: DownloadProcessingStage) -> String {
         switch stage {
         case .preparing: return t("stage.preparing")
@@ -210,9 +247,11 @@ final class SettingsStore: ObservableObject {
 
     func label(for cookieSource: BrowserCookieSource) -> String {
         switch cookieSource {
+        case .auto: return t("cookies.auto")
         case .none: return t("cookies.none")
         case .safari: return "Safari"
         case .chrome: return "Chrome"
+        case .comet: return "Comet"
         case .chromium: return "Chromium"
         case .firefox: return "Firefox"
         case .edge: return "Edge"
@@ -234,15 +273,21 @@ final class SettingsStore: ObservableObject {
     }
 
     private func bindPersistence() {
-        Publishers.CombineLatest4($language, $smartModeEnabled, $kind, $quality)
-            .combineLatest(Publishers.CombineLatest4($videoFormat, $audioFormat, $saveDirectory, $speedLimit))
-            .combineLatest(
-                Publishers.CombineLatest3(
-                    $cookieSource,
-                    $includeSubtitles,
-                    $includeAdditionalAudioTracks
-                )
-            )
+        Publishers.MergeMany(
+            $language.map { _ in () }.eraseToAnyPublisher(),
+            $smartModeEnabled.map { _ in () }.eraseToAnyPublisher(),
+            $appleTranscodeEnabled.map { _ in () }.eraseToAnyPublisher(),
+            $kind.map { _ in () }.eraseToAnyPublisher(),
+            $quality.map { _ in () }.eraseToAnyPublisher(),
+            $videoFormat.map { _ in () }.eraseToAnyPublisher(),
+            $audioFormat.map { _ in () }.eraseToAnyPublisher(),
+            $saveDirectory.map { _ in () }.eraseToAnyPublisher(),
+            $speedLimit.map { _ in () }.eraseToAnyPublisher(),
+            $transcodeBitrate.map { _ in () }.eraseToAnyPublisher(),
+            $cookieSource.map { _ in () }.eraseToAnyPublisher(),
+            $includeSubtitles.map { _ in () }.eraseToAnyPublisher(),
+            $includeAdditionalAudioTracks.map { _ in () }.eraseToAnyPublisher()
+        )
             .sink { [weak self] _ in
                 guard let self else { return }
                 self.persist()

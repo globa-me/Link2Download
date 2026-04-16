@@ -8,6 +8,11 @@ Native macOS desktop app for downloading video/audio from YouTube, Vimeo, TikTok
 - Download DMG: https://github.com/globa-me/Link2Download/releases/latest/download/Link2Download-Installer.dmg
 - Unblock helper script: https://github.com/globa-me/Link2Download/releases/latest/download/Enable_Link2Download.command
 
+Verified on 2026-04-16:
+- Current release page (`v1.0.0`): https://github.com/globa-me/Link2Download/releases/tag/v1.0.0
+- Direct DMG (`v1.0.0`): https://github.com/globa-me/Link2Download/releases/download/v1.0.0/Link2Download-Installer.dmg
+- Direct helper script (`v1.0.0`): https://github.com/globa-me/Link2Download/releases/download/v1.0.0/Enable_Link2Download.command
+
 ## Current scope
 
 - Native SwiftUI interface (light + dark mode, light-blue visual theme)
@@ -57,7 +62,17 @@ Option A (auto-download binaries):
 ./scripts/fetch_runtime_tools.sh
 ```
 
-Note: downloaded `ffmpeg/ffprobe` builds may be `x86_64`; on Apple Silicon this can require Rosetta.
+Notes:
+- On Apple Silicon, the script downloads ARM64 static `ffmpeg/ffprobe` builds.
+- On Intel Macs, it downloads Intel static builds.
+- The script prints detected binary architecture after download.
+
+Current upstream targets verified on 2026-04-16:
+- `yt-dlp_macos` latest -> `2026.03.17`: https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_macos
+- Intel `ffmpeg` latest -> `ffmpeg-8.1.zip`: https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip
+- Intel `ffprobe` latest -> `ffprobe-8.1.zip`: https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip
+- Apple Silicon `ffmpeg` archive: https://www.osxexperts.net/ffmpeg80arm.zip
+- Apple Silicon `ffprobe` archive: https://www.osxexperts.net/ffprobe80arm.zip
 
 Option B (copy from local system):
 

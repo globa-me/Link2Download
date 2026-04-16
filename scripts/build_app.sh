@@ -13,10 +13,11 @@ FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
 MODULE_CACHE_DIR="$BUILD_DIR/module-cache"
 MIN_MACOS_VERSION="${MIN_MACOS_VERSION:-12.0}"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
-APP_VERSION="${APP_VERSION:-1.0}"
-APP_BUILD="${APP_BUILD:-1}"
+APP_VERSION="${APP_VERSION:-1.1}"
+APP_BUILD="${APP_BUILD:-$(date +%d%m%y)}"
 SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
 APP_BIN="$BUILD_DIR/${APP_NAME}-arm64"
+TARGET_ARCH="arm64"
 
 rm -rf "$APP_PATH"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$FRAMEWORKS_DIR" "$MODULE_CACHE_DIR"
@@ -32,12 +33,32 @@ swiftc \
   "$ROOT_DIR"/Sources/*.swift \
   -framework SwiftUI \
   -framework AppKit \
-  -framework UniformTypeIdentifiers
+  -framework UniformTypeIdentifiers \
+  -framework Security \
+  -lsqlite3
 
 mv "$APP_BIN" "$MACOS_DIR/$APP_NAME"
 chmod +x "$MACOS_DIR/$APP_NAME"
 
 if [[ -d "$ROOT_DIR/Resources/bin" ]]; then
+  if [[ -x "$ROOT_DIR/Resources/bin/ffmpeg" ]]; then
+    FFMPEG_FILE_INFO="$(file "$ROOT_DIR/Resources/bin/ffmpeg" 2>/dev/null || true)"
+    if [[ "$TARGET_ARCH" == "arm64" ]] && ! echo "$FFMPEG_FILE_INFO" | grep -q "arm64"; then
+      echo "Error: Resources/bin/ffmpeg is not arm64, but app target is arm64."
+      echo "Run ./scripts/fetch_runtime_tools.sh (on Apple Silicon) and rebuild."
+      exit 1
+    fi
+  fi
+
+  if [[ -x "$ROOT_DIR/Resources/bin/ffprobe" ]]; then
+    FFPROBE_FILE_INFO="$(file "$ROOT_DIR/Resources/bin/ffprobe" 2>/dev/null || true)"
+    if [[ "$TARGET_ARCH" == "arm64" ]] && ! echo "$FFPROBE_FILE_INFO" | grep -q "arm64"; then
+      echo "Error: Resources/bin/ffprobe is not arm64, but app target is arm64."
+      echo "Run ./scripts/fetch_runtime_tools.sh (on Apple Silicon) and rebuild."
+      exit 1
+    fi
+  fi
+
   mkdir -p "$RESOURCES_DIR/bin"
   cp -R "$ROOT_DIR/Resources/bin/." "$RESOURCES_DIR/bin/"
   if compgen -G "$RESOURCES_DIR/bin/*" > /dev/null; then

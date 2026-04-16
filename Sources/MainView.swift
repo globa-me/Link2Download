@@ -9,32 +9,44 @@ struct MainView: View {
     @State private var isShowingAbout = false
     @State private var expandedRecordIDs: Set<UUID> = []
 
-    var body: some View {
-        ZStack(alignment: .bottom) {
-            VStack(spacing: 14) {
-                header
-                filterBar
-                content
-            }
-            .padding(16)
-            .background(Theme.panel.ignoresSafeArea())
+    private enum PlaylistChoice {
+        case singleVideo
+        case fullPlaylist
+        case cancel
+    }
 
-            if let toast = manager.toastMessage {
-                Text(toast)
-                    .font(.system(size: 13, weight: .semibold))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(.thinMaterial)
-                    .clipShape(Capsule())
-                    .padding(.bottom, 14)
-                    .onAppear {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) {
-                            manager.clearToast()
+    var body: some View {
+        GeometryReader { proxy in
+            let isCompact = proxy.size.width < 980
+            let isVeryCompact = proxy.size.width < 760
+
+            ZStack(alignment: .bottom) {
+                VStack(spacing: isCompact ? 10 : 14) {
+                    header(isCompact: isCompact, isVeryCompact: isVeryCompact)
+                    filterBar(isCompact: isCompact, isVeryCompact: isVeryCompact)
+                    content
+                }
+                .padding(isCompact ? 12 : 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(Theme.panel.ignoresSafeArea())
+
+                if let toast = manager.toastMessage {
+                    Text(toast)
+                        .font(.system(size: 13, weight: .semibold))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(.thinMaterial)
+                        .clipShape(Capsule())
+                        .padding(.bottom, 14)
+                        .onAppear {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) {
+                                manager.clearToast()
+                            }
                         }
-                    }
+                }
             }
         }
-        .frame(minWidth: 1100, minHeight: 700)
+        .frame(minWidth: 760, minHeight: 520)
         .sheet(isPresented: $isShowingSettings) {
             SettingsSheetView(settings: settings)
         }
@@ -43,124 +55,56 @@ struct MainView: View {
         }
     }
 
-    private var header: some View {
+    private func header(isCompact: Bool, isVeryCompact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                Button(action: pasteAndStart) {
-                    Label(settings.t("toolbar.paste"), systemImage: "link.badge.plus")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(Theme.accentStrong)
-                        )
-                }
-                .buttonStyle(.plain)
+            if isCompact {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 12) {
+                        pasteButton
 
-                Toggle(settings.t("toolbar.smart"), isOn: smartModeBinding)
-                    .toggleStyle(.switch)
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(width: 180)
-                    .help(settings.t("smart.help"))
-
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        menuField(title: settings.t("toolbar.download")) {
-                            Picker("", selection: $settings.kind) {
-                                ForEach(DownloadKind.allCases) { kind in
-                                    Text(settings.label(for: kind)).tag(kind)
-                                }
-                            }
-                            .labelsHidden()
-                            .frame(width: 105)
+                        if !isVeryCompact {
+                            smartModeToggle
                         }
 
-                        menuField(title: settings.t("toolbar.quality")) {
-                            Picker("", selection: $settings.quality) {
-                                ForEach(QualityPreset.userSelectableCases) { quality in
-                                    Text(settings.label(for: quality)).tag(quality)
-                                }
-                            }
-                            .labelsHidden()
-                            .frame(width: 110)
-                        }
+                        Spacer(minLength: 0)
 
-                        if settings.kind == .video {
-                            menuField(title: settings.t("toolbar.format")) {
-                                Picker("", selection: $settings.videoFormat) {
-                                    ForEach(VideoFormat.allCases) { format in
-                                        Text(format.rawValue.uppercased()).tag(format)
-                                    }
-                                }
-                                .labelsHidden()
-                                .frame(width: 85)
-                            }
-                        } else {
-                            menuField(title: settings.t("toolbar.format")) {
-                                Picker("", selection: $settings.audioFormat) {
-                                    ForEach(AudioFormat.allCases) { format in
-                                        Text(format.rawValue.uppercased()).tag(format)
-                                    }
-                                }
-                                .labelsHidden()
-                                .frame(width: 85)
-                            }
-                        }
-
-                        menuField(title: settings.t("toolbar.speed")) {
-                            Picker("", selection: $settings.speedLimit) {
-                                ForEach(SpeedLimitPreset.allCases) { speed in
-                                    Text(settings.label(for: speed)).tag(speed)
-                                }
-                            }
-                            .labelsHidden()
-                            .frame(width: 110)
-                        }
+                        toolbarSettingsButtons
                     }
-                    .padding(.vertical, 2)
+
+                    if isVeryCompact {
+                        smartModeToggle
+                    }
+
+                    toolbarPickers
                 }
-
-                Spacer(minLength: 0)
-
-                toolbarIconButton(systemImage: "gearshape", help: settings.t("toolbar.settings")) {
-                    isShowingSettings = true
-                }
-
-                toolbarIconButton(systemImage: "info.circle", help: settings.t("toolbar.about")) {
-                    isShowingAbout = true
+            } else {
+                HStack(spacing: 12) {
+                    pasteButton
+                    smartModeToggle
+                    toolbarPickers
+                    Spacer(minLength: 0)
+                    toolbarSettingsButtons
                 }
             }
 
-            HStack(spacing: 10) {
-                Text("\(settings.t("toolbar.saveTo")): \(settings.displaySaveDirectory())")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.secondaryText)
-                    .lineLimit(1)
+            if isCompact {
+                VStack(alignment: .leading, spacing: 6) {
+                    saveDirectoryText(lineLimit: 2)
 
-                Button(settings.t("toolbar.chooseFolder")) {
-                    chooseSaveFolder()
-                }
-                .buttonStyle(.link)
-
-                Button(settings.t("toolbar.resetDefaults")) {
-                    settings.resetDefaults()
-                }
-                .buttonStyle(.link)
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(settings.smartModeEnabled ? settings.t("smart.enabled") : settings.t("smart.disabled"))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Theme.secondaryText)
-
-                    if settings.smartModeEnabled {
-                        Text(settings.t("smart.profileHint"))
-                            .font(.system(size: 11))
-                            .foregroundStyle(Theme.secondaryText)
+                    HStack(spacing: 10) {
+                        chooseFolderButton
+                        resetDefaultsButton
                     }
+
+                    smartModeStatus(alignment: .leading)
+                }
+            } else {
+                HStack(spacing: 10) {
+                    saveDirectoryText(lineLimit: 1)
+                    chooseFolderButton
+                    resetDefaultsButton
+                    Spacer()
+                    smartModeStatus(alignment: .trailing)
                 }
             }
 
@@ -172,63 +116,98 @@ struct MainView: View {
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.ultraThinMaterial))
     }
 
-    private var filterBar: some View {
-        HStack {
-            Picker("Filter", selection: $manager.listFilter) {
-                Text(settings.t("filter.all")).tag(ListFilter.all)
-                Text(settings.t("filter.video")).tag(ListFilter.video)
-                Text(settings.t("filter.audio")).tag(ListFilter.audio)
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 260)
-
-            HStack(spacing: 6) {
-                TextField(settings.t("toolbar.search"), text: $manager.searchQuery)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 280)
-
-                if !manager.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Button {
-                        manager.searchQuery = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 12, weight: .semibold))
+    private func filterBar(isCompact: Bool, isVeryCompact: Bool) -> some View {
+        Group {
+            if isCompact {
+                VStack(alignment: .leading, spacing: 10) {
+                    if isVeryCompact {
+                        filterPicker
+                            .frame(maxWidth: .infinity)
+                        searchField
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        HStack(spacing: 10) {
+                            filterPicker
+                                .frame(width: 240)
+                            searchField
+                            Spacer(minLength: 0)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .help(settings.t("toolbar.clearSearch"))
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            if !manager.records.isEmpty {
+                                statPill(title: settings.t("stats.active"), value: activeCount, color: Theme.accentStrong)
+                                statPill(title: settings.t("stats.queued"), value: queuedCount, color: .orange)
+                                statPill(title: settings.t("stats.completed"), value: completedCount, color: .green)
+                                statPill(title: settings.t("stats.failed"), value: failedCount, color: .red)
+                            }
+
+                            Text("\(manager.filteredRecords.count)")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Theme.secondaryText)
+
+                            if failedCount > 0 {
+                                Button(settings.t("toolbar.retryErrors")) {
+                                    manager.retryFailedAndCancelled()
+                                }
+                                .buttonStyle(.link)
+
+                                Button(settings.t("toolbar.clearErrors")) {
+                                    manager.removeFailedAndCancelled()
+                                }
+                                .buttonStyle(.link)
+                            }
+
+                            if !manager.records.isEmpty {
+                                Button(settings.t("toolbar.clearList")) {
+                                    manager.removeAll()
+                                }
+                                .buttonStyle(.link)
+                            }
+                        }
+                        .padding(.vertical, 1)
+                    }
                 }
-            }
+            } else {
+                HStack {
+                    filterPicker
+                        .frame(width: 260)
 
-            if !manager.records.isEmpty {
-                statPill(title: settings.t("stats.active"), value: activeCount, color: Theme.accentStrong)
-                statPill(title: settings.t("stats.queued"), value: queuedCount, color: .orange)
-                statPill(title: settings.t("stats.completed"), value: completedCount, color: .green)
-                statPill(title: settings.t("stats.failed"), value: failedCount, color: .red)
-            }
+                    searchField
 
-            Spacer()
+                    if !manager.records.isEmpty {
+                        statPill(title: settings.t("stats.active"), value: activeCount, color: Theme.accentStrong)
+                        statPill(title: settings.t("stats.queued"), value: queuedCount, color: .orange)
+                        statPill(title: settings.t("stats.completed"), value: completedCount, color: .green)
+                        statPill(title: settings.t("stats.failed"), value: failedCount, color: .red)
+                    }
 
-            Text("\(manager.filteredRecords.count)")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Theme.secondaryText)
+                    Spacer()
 
-            if failedCount > 0 {
-                Button(settings.t("toolbar.retryErrors")) {
-                    manager.retryFailedAndCancelled()
+                    Text("\(manager.filteredRecords.count)")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.secondaryText)
+
+                    if failedCount > 0 {
+                        Button(settings.t("toolbar.retryErrors")) {
+                            manager.retryFailedAndCancelled()
+                        }
+                        .buttonStyle(.link)
+
+                        Button(settings.t("toolbar.clearErrors")) {
+                            manager.removeFailedAndCancelled()
+                        }
+                        .buttonStyle(.link)
+                    }
+
+                    if !manager.records.isEmpty {
+                        Button(settings.t("toolbar.clearList")) {
+                            manager.removeAll()
+                        }
+                        .buttonStyle(.link)
+                    }
                 }
-                .buttonStyle(.link)
-
-                Button(settings.t("toolbar.clearErrors")) {
-                    manager.removeFailedAndCancelled()
-                }
-                .buttonStyle(.link)
-            }
-
-            if !manager.records.isEmpty {
-                Button(settings.t("toolbar.clearList")) {
-                    manager.removeAll()
-                }
-                .buttonStyle(.link)
             }
         }
     }
@@ -254,6 +233,7 @@ struct MainView: View {
                             onOpenBrowser: { manager.openSourceInBrowser(recordID: record.id) },
                             onCancel: { manager.cancel(recordID: record.id) },
                             onRetry: { manager.retry(recordID: record.id) },
+                            onTranscodeCopy: { manager.enqueueTranscodeCopy(recordID: record.id) },
                             onDeleteFile: { manager.deleteFile(for: record.id) },
                             onRemoveFromList: { manager.removeRecord(record.id) },
                             onToggleExpand: { toggleExpanded(record.id) }
@@ -273,6 +253,13 @@ struct MainView: View {
 
                                     Button(settings.t("action.deleteFile")) {
                                         manager.deleteFile(for: record.id)
+                                    }
+
+                                    if record.kind == .video && record.operationType != .transcodeCopy {
+                                        Divider()
+                                        Button(settings.t("action.transcodeCopy")) {
+                                            manager.enqueueTranscodeCopy(recordID: record.id)
+                                        }
                                     }
                                 }
 
@@ -358,6 +345,169 @@ struct MainView: View {
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.thinMaterial))
     }
 
+    private var pasteButton: some View {
+        Button(action: pasteAndStart) {
+            Label(settings.t("toolbar.paste"), systemImage: "link.badge.plus")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Theme.accentStrong)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var smartModeToggle: some View {
+        Toggle(settings.t("toolbar.smart"), isOn: smartModeBinding)
+            .toggleStyle(.switch)
+            .font(.system(size: 13, weight: .semibold))
+            .frame(minWidth: 160, maxWidth: 220, alignment: .leading)
+            .help(settings.t("smart.help"))
+    }
+
+    private var toolbarPickers: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                menuField(title: settings.t("toolbar.download")) {
+                    Picker("", selection: $settings.kind) {
+                        ForEach(DownloadKind.allCases) { kind in
+                            Text(settings.label(for: kind)).tag(kind)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 105)
+                }
+
+                menuField(title: settings.t("toolbar.quality")) {
+                    Picker("", selection: $settings.quality) {
+                        ForEach(QualityPreset.userSelectableCases) { quality in
+                            Text(settings.label(for: quality)).tag(quality)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 110)
+                }
+
+                if settings.kind == .video {
+                    menuField(title: settings.t("toolbar.format")) {
+                        Picker("", selection: $settings.videoFormat) {
+                            ForEach(VideoFormat.allCases) { format in
+                                Text(format.rawValue.uppercased()).tag(format)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 85)
+                    }
+                } else {
+                    menuField(title: settings.t("toolbar.format")) {
+                        Picker("", selection: $settings.audioFormat) {
+                            ForEach(AudioFormat.allCases) { format in
+                                Text(format.rawValue.uppercased()).tag(format)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 85)
+                    }
+                }
+
+                menuField(title: settings.t("toolbar.speed")) {
+                    Picker("", selection: $settings.speedLimit) {
+                        ForEach(SpeedLimitPreset.allCases) { speed in
+                            Text(settings.label(for: speed)).tag(speed)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 110)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private var toolbarSettingsButtons: some View {
+        HStack(spacing: 8) {
+            toolbarIconButton(systemImage: "gearshape", help: settings.t("toolbar.settings")) {
+                isShowingSettings = true
+            }
+
+            toolbarIconButton(systemImage: "ladybug", help: settings.t("toolbar.debug")) {
+                manager.copyDebugReportToClipboard()
+            }
+
+            toolbarIconButton(systemImage: "info.circle", help: settings.t("toolbar.about")) {
+                isShowingAbout = true
+            }
+        }
+    }
+
+    private func saveDirectoryText(lineLimit: Int) -> some View {
+        Text("\(settings.t("toolbar.saveTo")): \(settings.displaySaveDirectory())")
+            .font(.system(size: 12))
+            .foregroundStyle(Theme.secondaryText)
+            .lineLimit(lineLimit)
+            .truncationMode(.middle)
+    }
+
+    private var chooseFolderButton: some View {
+        Button(settings.t("toolbar.chooseFolder")) {
+            chooseSaveFolder()
+        }
+        .buttonStyle(.link)
+    }
+
+    private var resetDefaultsButton: some View {
+        Button(settings.t("toolbar.resetDefaults")) {
+            settings.resetDefaults()
+        }
+        .buttonStyle(.link)
+    }
+
+    private func smartModeStatus(alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: 2) {
+            Text(settings.smartModeEnabled ? settings.t("smart.enabled") : settings.t("smart.disabled"))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Theme.secondaryText)
+
+            if settings.smartModeEnabled {
+                Text(settings.appleTranscodeEnabled ? settings.t("smart.profileHint") : settings.t("smart.profileHintNoTranscode"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.secondaryText)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    private var filterPicker: some View {
+        Picker("Filter", selection: $manager.listFilter) {
+            Text(settings.t("filter.all")).tag(ListFilter.all)
+            Text(settings.t("filter.video")).tag(ListFilter.video)
+            Text(settings.t("filter.audio")).tag(ListFilter.audio)
+        }
+        .pickerStyle(.segmented)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            TextField(settings.t("toolbar.search"), text: $manager.searchQuery)
+                .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: 280)
+
+            if !manager.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Button {
+                    manager.searchQuery = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .help(settings.t("toolbar.clearSearch"))
+            }
+        }
+    }
+
     private func menuField<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
         HStack(spacing: 6) {
             Text(title)
@@ -400,7 +550,40 @@ struct MainView: View {
             manager.toastMessage = settings.t("toast.invalidURL")
             return
         }
-        manager.enqueue(urlString: value)
+
+        let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let context = manager.playlistPromptContextIfNeeded(for: trimmedValue) {
+            switch askPlaylistChoice() {
+            case .singleVideo:
+                manager.enqueue(urlString: context.singleVideoURL)
+            case .fullPlaylist:
+                manager.enqueue(urlString: context.originalURL)
+            case .cancel:
+                return
+            }
+            return
+        }
+
+        manager.enqueue(urlString: trimmedValue)
+    }
+
+    private func askPlaylistChoice() -> PlaylistChoice {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = settings.t("playlist.prompt.title")
+        alert.informativeText = settings.t("playlist.prompt.message")
+        alert.addButton(withTitle: settings.t("playlist.prompt.single"))
+        alert.addButton(withTitle: settings.t("playlist.prompt.all"))
+        alert.addButton(withTitle: settings.t("action.cancel"))
+
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            return .singleVideo
+        case .alertSecondButtonReturn:
+            return .fullPlaylist
+        default:
+            return .cancel
+        }
     }
 
     private func chooseSaveFolder() {
@@ -466,6 +649,7 @@ struct DownloadRowView: View {
     let onOpenBrowser: () -> Void
     let onCancel: () -> Void
     let onRetry: () -> Void
+    let onTranscodeCopy: () -> Void
     let onDeleteFile: () -> Void
     let onRemoveFromList: () -> Void
     let onToggleExpand: () -> Void
@@ -527,6 +711,10 @@ struct DownloadRowView: View {
                     rowActionButton(title: settings.t("action.retry"), systemImage: "arrow.clockwise", emphasized: false, action: onRetry)
                 }
 
+                if canTranscodeCopy {
+                    rowActionButton(title: settings.t("action.transcodeCopy"), systemImage: "film.stack", emphasized: false, action: onTranscodeCopy)
+                }
+
                 Spacer(minLength: 0)
 
                 Menu {
@@ -538,6 +726,9 @@ struct DownloadRowView: View {
                         Button(settings.t("action.openFile"), action: onOpenFile)
                         Button(settings.t("action.showFinder"), action: onShowFinder)
                         Button(settings.t("action.deleteFile"), action: onDeleteFile)
+                        if canTranscodeCopy {
+                            Button(settings.t("action.transcodeCopy"), action: onTranscodeCopy)
+                        }
                     }
 
                     if record.status == .queued || record.status == .downloading {
@@ -585,57 +776,8 @@ struct DownloadRowView: View {
                 expandedDetails
             }
 
-            if record.status == .downloading {
-                if record.progress > 0.001 {
-                    ProgressView(value: record.progress)
-                        .progressViewStyle(.linear)
-                    HStack {
-                        stageBadgeText(stageDisplayText)
-                        Spacer()
-                        Text("\(Int(record.progress * 100))%")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Theme.secondaryText)
-                    }
-                    if let transferProgressLine {
-                        Text(transferProgressLine)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Theme.secondaryText)
-                            .lineLimit(1)
-                    }
-                    Text(record.statusMessage)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.secondaryText)
-                        .lineLimit(1)
-                } else {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                            .controlSize(.small)
-                        stageBadgeText(stageDisplayText)
-                        Text(record.statusMessage.isEmpty ? settings.t("progress.preparing") : record.statusMessage)
-                            .font(.system(size: 11))
-                            .foregroundStyle(Theme.secondaryText)
-                        Spacer()
-                    }
-                    if let transferProgressLine {
-                        Text(transferProgressLine)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Theme.secondaryText)
-                            .lineLimit(1)
-                    }
-                }
-            } else if record.status == .queued {
-                ProgressView(value: 0.0)
-                    .progressViewStyle(.linear)
-                HStack {
-                    Text(record.statusMessage)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.secondaryText)
-                        .lineLimit(1)
-                    Spacer()
-                    Text(settings.t("row.status.queued"))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Theme.secondaryText)
-                }
+            if record.status == .downloading || record.status == .queued {
+                progressSections
             } else if record.status == .failed, let error = record.errorMessage {
                 statusBanner(text: error, color: .red, systemImage: "exclamationmark.triangle.fill")
             } else if record.status == .cancelled {
@@ -663,6 +805,14 @@ struct DownloadRowView: View {
         return FileManager.default.fileExists(atPath: path)
     }
 
+    private var canTranscodeCopy: Bool {
+        hasValidFile &&
+        record.kind == .video &&
+        record.operationType != .transcodeCopy &&
+        record.status != .queued &&
+        record.status != .downloading
+    }
+
     @ViewBuilder
     private var thumbnailView: some View {
         if let path = record.thumbnailPath,
@@ -687,6 +837,148 @@ struct DownloadRowView: View {
         record.filePath.map { URL(fileURLWithPath: $0).lastPathComponent } ?? settings.t("meta.noFile")
     }
 
+    private var progressSections: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if shouldShowDownloadSection {
+                progressLane(
+                    title: settings.t("progress.section.download"),
+                    progress: downloadSectionProgress,
+                    detail: downloadSectionDetail,
+                    badgeText: downloadStageBadgeText,
+                    tint: Theme.accentStrong
+                )
+            }
+
+            if shouldShowProcessingSection {
+                progressLane(
+                    title: settings.t("progress.section.processing"),
+                    progress: processingSectionProgress,
+                    detail: processingSectionDetail,
+                    badgeText: processingStageBadgeText,
+                    tint: .orange
+                )
+            }
+        }
+    }
+
+    private func progressLane(
+        title: String,
+        progress: Double?,
+        detail: String?,
+        badgeText: String?,
+        tint: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.secondaryText)
+
+                if let badgeText {
+                    stageBadgeText(badgeText)
+                }
+
+                Spacer()
+
+                if let progress {
+                    Text("\(Int(min(max(progress, 0.0), 1.0) * 100.0))%")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Theme.secondaryText)
+                }
+            }
+
+            if let progress {
+                ProgressView(value: min(max(progress, 0.0), 1.0))
+                    .progressViewStyle(.linear)
+                    .tint(tint)
+            } else {
+                ProgressView()
+                    .progressViewStyle(.linear)
+                    .tint(tint)
+            }
+
+            if let detail, !detail.isEmpty {
+                Text(detail)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.secondaryText)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var shouldShowDownloadSection: Bool {
+        if record.operationType == .transcodeCopy {
+            return record.downloadProgress != nil
+        }
+        return record.downloadProgress != nil ||
+            record.downloadedBytes != nil ||
+            record.totalBytes != nil ||
+            record.status == .queued ||
+            (record.status == .downloading && !isProcessingOnlyPhase)
+    }
+
+    private var shouldShowProcessingSection: Bool {
+        if record.operationType == .transcodeCopy {
+            return true
+        }
+        return record.processingProgress != nil || isProcessingOnlyPhase
+    }
+
+    private var isProcessingOnlyPhase: Bool {
+        guard let stage = record.processingStage else { return false }
+        switch stage {
+        case .remuxing, .hardwareTranscode, .softwareTranscode:
+            return true
+        case .preparing, .downloading:
+            return false
+        }
+    }
+
+    private var downloadSectionProgress: Double? {
+        if let progress = record.downloadProgress {
+            return progress
+        }
+        guard let downloaded = record.downloadedBytes,
+              let total = record.totalBytes,
+              total > 0 else {
+            return record.operationType == .transcodeCopy ? nil : 0.0
+        }
+        return min(max(Double(downloaded) / Double(total), 0.0), 1.0)
+    }
+
+    private var processingSectionProgress: Double? {
+        if record.status == .queued && record.processingProgress == nil && isProcessingOnlyPhase {
+            return 0.0
+        }
+        return record.processingProgress
+    }
+
+    private var downloadSectionDetail: String? {
+        if let transferProgressLine {
+            return transferProgressLine
+        }
+        return record.statusMessage
+    }
+
+    private var processingSectionDetail: String? {
+        if record.status == .queued {
+            return record.statusMessage
+        }
+        return record.statusMessage.isEmpty ? settings.t("progress.appleOptimize") : record.statusMessage
+    }
+
+    private var downloadStageBadgeText: String? {
+        guard record.processingStage == .preparing else { return nil }
+        return settings.label(for: .preparing)
+    }
+
+    private var processingStageBadgeText: String? {
+        guard let stage = record.processingStage else { return nil }
+        guard stage != .downloading && stage != .preparing else { return nil }
+        return settings.label(for: stage)
+    }
+
     private var transferProgressLine: String? {
         let downloaded = AppFormatters.sizeString(from: record.downloadedBytes)
         let total = AppFormatters.sizeString(from: record.totalBytes)
@@ -701,15 +993,29 @@ struct DownloadRowView: View {
             parts.append(downloaded)
         }
 
+        if let remaining = remainingSizeLine {
+            parts.append("\(settings.t("progress.stats.remaining")) \(remaining)")
+        }
+
         if record.averageSpeedBytesPerSecond != nil {
-            parts.append("\(settings.t("progress.stats.avg")) \(speed)")
+            parts.append("\(settings.t("progress.stats.speed")) \(speed)")
         }
 
         if let eta = remainingTimeLine {
-            parts.append("\(settings.t("progress.stats.left")) \(eta)")
+            parts.append("\(settings.t("progress.stats.eta")) \(eta)")
         }
 
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    private var remainingSizeLine: String? {
+        guard let totalBytes = record.totalBytes,
+              let downloadedBytes = record.downloadedBytes,
+              totalBytes > downloadedBytes else {
+            return nil
+        }
+
+        return AppFormatters.sizeString(from: totalBytes - downloadedBytes)
     }
 
     private var remainingTimeLine: String? {
@@ -730,7 +1036,8 @@ struct DownloadRowView: View {
     private var statusText: String {
         switch record.status {
         case .queued: return settings.t("row.status.queued")
-        case .downloading: return settings.t("row.status.downloading")
+        case .downloading:
+            return isProcessingOnlyPhase ? settings.t("row.status.processing") : settings.t("row.status.downloading")
         case .completed: return settings.t("row.status.completed")
         case .failed: return settings.t("row.status.failed")
         case .cancelled: return settings.t("row.status.cancelled")
@@ -740,7 +1047,7 @@ struct DownloadRowView: View {
     private var statusColor: Color {
         switch record.status {
         case .queued: return .orange
-        case .downloading: return Theme.accentStrong
+        case .downloading: return isProcessingOnlyPhase ? .orange : Theme.accentStrong
         case .completed: return .green
         case .failed: return .red
         case .cancelled: return .gray
@@ -798,7 +1105,9 @@ struct DownloadRowView: View {
             Text(text)
                 .font(.system(size: 11))
                 .foregroundStyle(color)
-                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .lineLimit(4)
+                .textSelection(.enabled)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 8)
@@ -807,11 +1116,6 @@ struct DownloadRowView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(color.opacity(0.10))
         )
-    }
-
-    private var stageDisplayText: String {
-        let stage = record.processingStage ?? .preparing
-        return "\(settings.t("stage.label")): \(settings.label(for: stage))"
     }
 
     private func stageBadgeText(_ text: String) -> some View {
@@ -831,6 +1135,18 @@ struct DownloadRowView: View {
             detailRow(title: settings.t("details.source"), value: record.sourceURL)
             detailRow(title: settings.t("details.file"), value: fileNameLine)
             detailRow(title: settings.t("details.updated"), value: AppFormatters.dateTimeString(from: record.updatedAt))
+            if record.originalVideoBitrateBps != nil {
+                detailRow(
+                    title: settings.t("details.originalBitrate"),
+                    value: AppFormatters.bitrateString(from: record.originalVideoBitrateBps)
+                )
+            }
+            if record.transcodedVideoBitrateBps != nil {
+                detailRow(
+                    title: settings.t("details.transcodedBitrate"),
+                    value: AppFormatters.bitrateString(from: record.transcodedVideoBitrateBps)
+                )
+            }
 
             HStack(spacing: 8) {
                 rowActionButton(title: settings.t("action.copySource"), systemImage: "doc.on.doc", emphasized: false, action: onCopySource)
@@ -852,7 +1168,7 @@ struct DownloadRowView: View {
             Text("\(title):")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Theme.secondaryText)
-                .frame(width: 74, alignment: .leading)
+                .frame(width: 140, alignment: .leading)
             Text(value)
                 .font(.system(size: 11))
                 .lineLimit(1)
@@ -932,6 +1248,16 @@ struct SettingsSheetView: View {
                     .frame(width: 160)
                 }
 
+                row(title: settings.t("settings.transcodeBitrate")) {
+                    Picker("", selection: $settings.transcodeBitrate) {
+                        ForEach(TranscodeBitratePreset.allCases) { preset in
+                            Text(settings.label(for: preset)).tag(preset)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 180)
+                }
+
                 row(title: settings.t("settings.cookies")) {
                     Picker("", selection: $settings.cookieSource) {
                         ForEach(BrowserCookieSource.allCases) { source in
@@ -943,11 +1269,15 @@ struct SettingsSheetView: View {
                 }
             }
 
+            youtubeAccessCard
+
             Toggle(settings.t("toolbar.smart"), isOn: Binding(
                 get: { settings.smartModeEnabled },
                 set: { settings.setSmartMode($0) }
             ))
             .help(settings.t("smart.help"))
+            Toggle(settings.t("settings.appleTranscode"), isOn: $settings.appleTranscodeEnabled)
+                .help(settings.t("settings.appleTranscodeHelp"))
             Toggle(settings.t("settings.subtitles"), isOn: $settings.includeSubtitles)
             Toggle(settings.t("settings.audioTracks"), isOn: $settings.includeAdditionalAudioTracks)
 
@@ -970,7 +1300,7 @@ struct SettingsSheetView: View {
             }
         }
         .padding(20)
-        .frame(width: 560)
+        .frame(width: 620)
     }
 
     private func row<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -980,6 +1310,79 @@ struct SettingsSheetView: View {
             content()
             Spacer()
         }
+    }
+
+    private var youtubeAccessCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: "person.crop.rectangle.badge.shield.checkmark")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(cookieStatusColor)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(settings.t("settings.youtubeAccessTitle"))
+                        .font(.system(size: 13, weight: .semibold))
+
+                    Text(settings.t("settings.youtubeAccessBody"))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+
+                Button(settings.t("settings.openYouTube")) {
+                    openYouTube()
+                }
+                .buttonStyle(.link)
+            }
+
+            HStack(spacing: 8) {
+                Text(settings.label(for: settings.cookieSource))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(cookieStatusColor)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(cookieStatusColor.opacity(0.14))
+                    )
+
+                Text(cookieStatusDetail)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(cookieStatusColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.regularMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(cookieStatusColor.opacity(0.18), lineWidth: 1)
+        )
+    }
+
+    private var cookieStatusColor: Color {
+        settings.cookieSource == .none ? .orange : Theme.accentStrong
+    }
+
+    private var cookieStatusDetail: String {
+        switch settings.cookieSource {
+        case .none:
+            return settings.t("settings.youtubeAccessDisabled")
+        case .auto:
+            return settings.t("settings.youtubeAccessAuto")
+        default:
+            return settings.t("settings.youtubeAccessSelected")
+        }
+    }
+
+    private func openYouTube() {
+        guard let url = URL(string: "https://www.youtube.com/") else { return }
+        NSWorkspace.shared.open(url)
     }
 }
 
@@ -1005,7 +1408,7 @@ struct AboutSheetView: View {
                 Text(settings.t("about.version"))
                     .foregroundStyle(Theme.secondaryText)
                 Spacer()
-                Text(appVersion)
+                Text(AppBuildInfo.displayVersion)
             }
 
             HStack {
@@ -1032,14 +1435,6 @@ struct AboutSheetView: View {
         }
         .padding(20)
         .frame(width: 420)
-    }
-
-    private var appVersion: String {
-        if let value = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
-           !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return value
-        }
-        return "1.0"
     }
 
     private var websiteURL: URL {

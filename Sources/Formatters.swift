@@ -51,12 +51,18 @@ enum AppFormatters {
 
     static func speedString(from bytesPerSecond: Double?) -> String {
         guard let bytesPerSecond, bytesPerSecond > 0 else { return "--" }
-        let megabitsPerSecond = (bytesPerSecond * 8.0) / 1_000_000.0
+        let roundedBytes = Int64(bytesPerSecond.rounded())
+        return "\(byteFormatter.string(fromByteCount: roundedBytes))/s"
+    }
+
+    static func bitrateString(from bitsPerSecond: Int64?) -> String {
+        guard let bitsPerSecond, bitsPerSecond > 0 else { return "--" }
+        let megabitsPerSecond = Double(bitsPerSecond) / 1_000_000.0
         if megabitsPerSecond >= 1.0 {
             let value = compactNumberFormatter.string(from: NSNumber(value: megabitsPerSecond)) ?? "\(megabitsPerSecond)"
             return "\(value) Mbps"
         }
-        let kilobitsPerSecond = (bytesPerSecond * 8.0) / 1_000.0
+        let kilobitsPerSecond = Double(bitsPerSecond) / 1_000.0
         let value = compactNumberFormatter.string(from: NSNumber(value: kilobitsPerSecond)) ?? "\(kilobitsPerSecond)"
         return "\(value) Kbps"
     }
