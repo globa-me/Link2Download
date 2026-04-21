@@ -27,6 +27,16 @@ public partial class App : System.Windows.Application
         var settingsRepository = new JsonSettingsRepository(Path.Combine(roamingRoot, "settings.json"));
         var historyRepository = new JsonHistoryRepository(Path.Combine(roamingRoot, "history.json"));
         var diagnostics = new FileDiagnosticsLogger(Path.Combine(localRoot, "logs", "app.log"));
+
+        try
+        {
+            await EmbeddedRuntimeBootstrapper.PrepareAsync(localRoot, typeof(App).Assembly, diagnostics);
+        }
+        catch (Exception ex)
+        {
+            diagnostics.Warning($"Failed to prepare embedded runtime: {ex.Message}");
+        }
+
         var runtimeService = new YtDlpDownloadRuntimeService(diagnostics);
         var dispatcher = new WpfUiDispatcher(Dispatcher);
         var downloadManager = new DownloadManager(runtimeService, historyRepository, diagnostics, dispatcher);

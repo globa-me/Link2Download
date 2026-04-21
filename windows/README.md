@@ -60,6 +60,21 @@ dotnet build .\windows\Link2Download.Windows.sln
 dotnet run --project .\windows\src\Link2Download.Windows.App
 ```
 
+## Portable Publish
+
+To create the current portable Windows package with a single launchable `.exe`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\windows\publish-portable.ps1
+```
+
+Output:
+
+- `windows\dist\Link2Download-Windows-Portable\Link2Download.exe`
+- `windows\dist\Link2Download-Windows-Portable.zip`
+
+The portable build no longer requires `Start Link2Download.cmd`. Runtime tools are bundled into the app and extracted automatically to `%LocalAppData%\Link2Download\runtime\win-x64` on first launch. If `deno.exe` is present in `windows/runtime/win-x64` when you publish, it is bundled alongside the other runtime tools as well.
+
 ## Persistence
 
 - settings: `%AppData%\Link2Download\settings.json`

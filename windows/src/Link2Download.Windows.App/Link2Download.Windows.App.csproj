@@ -12,6 +12,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>Link2Download</AssemblyName>
+    <Version>1.1.0</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
   </PropertyGroup>
+
+  <ItemGroup Condition="'$(EmbedPortableRuntime)' == 'true' Or '$(Configuration)' == 'Release'">
+    <EmbeddedResource Include="..\..\runtime\win-x64\*.exe" LogicalName="BundledRuntime.%(Filename)%(Extension)" />
+  </ItemGroup>
 
 </Project>

@@ -112,7 +112,7 @@ public sealed class YtDlpDownloadRuntimeService : IDownloadRuntimeService
             StartInfo = new ProcessStartInfo
             {
                 FileName = tools.YtDlpPath,
-                Arguments = BuildArguments(request, cookieSource, tools),
+                Arguments = YtDlpArgumentsBuilder.Build(request, cookieSource, tools.Directory),
                 WorkingDirectory = request.Preferences.SaveDirectory,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
@@ -123,8 +123,16 @@ public sealed class YtDlpDownloadRuntimeService : IDownloadRuntimeService
             }
         };
 
+        var inheritedPath = process.StartInfo.Environment.TryGetValue("PATH", out var currentPath)
+            ? currentPath
+            : Environment.GetEnvironmentVariable("PATH");
+        process.StartInfo.Environment["PATH"] = string.IsNullOrWhiteSpace(inheritedPath)
+            ? tools.Directory
+            : $"{tools.Directory}{Path.PathSeparator}{inheritedPath}";
         process.StartInfo.Environment["LC_ALL"] = "en_US.UTF-8";
         process.StartInfo.Environment["LANG"] = "en_US.UTF-8";
+        process.StartInfo.Environment["PYTHONIOENCODING"] = "utf-8";
+        process.StartInfo.Environment["PYTHONUTF8"] = "1";
 
         using var registration = cancellationToken.Register(() => TryKill(process));
 
@@ -252,134 +260,6 @@ public sealed class YtDlpDownloadRuntimeService : IDownloadRuntimeService
         }
     }
 
-    private string BuildArguments(DownloadRuntimeRequest request, BrowserCookieSource cookieSource, RuntimeTools tools)
-    {
-        var args = new List<string>
-        {
-            "--progress",
-            "--newline",
-            "--no-warnings",
-            "--ignore-config",
-            "--force-overwrites",
-            "--no-continue",
-            "--windows-filenames",
-            "--progress-template",
-            "download:__L2D_PROGRESS__:%(progress._percent_str)s\t%(progress.downloaded_bytes)s\t%(progress.total_bytes)s\t%(progress.total_bytes_estimate)s\t%(progress.speed)s\t%(progress.eta)s",
-            "--paths",
-            request.Preferences.SaveDirectory,
-            "--output",
-            BuildOutputTemplate(request.Profile),
-            "--ffmpeg-location",
-            tools.Directory,
-            "--print",
-            "before_dl:__L2D_META__:%(title)s\t%(duration)s\t%(extractor_key)s\t%(uploader)s",
-            "--print",
-            "before_dl:__L2D_ITEM__:%(title)s\t%(duration)s\t%(ext)s\t%(resolution)s",
-            "--print",
-            "after_move:__L2D_FILE__:%(filepath)s"
-        };
-
-        if (!string.IsNullOrWhiteSpace(request.Preferences.SpeedLimitArgument))
-        {
-            args.Add("--limit-rate");
-            args.Add(request.Preferences.SpeedLimitArgument);
-        }
-
-        if (cookieSource is not BrowserCookieSource.None and not BrowserCookieSource.Auto)
-        {
-            args.Add("--cookies-from-browser");
-            args.Add(cookieSource.ToString().ToLowerInvariant());
-        }
-
-        if (request.Profile.Kind == DownloadKind.Video)
-        {
-            args.Add("-f");
-            args.Add(BuildFormatSelector(request.Profile));
-            args.Add("--merge-output-format");
-            args.Add(request.Profile.VideoFormat.ToString().ToLowerInvariant());
-
-            if (request.Profile.IncludeAdditionalAudioTracks)
-            {
-                args.Add("--audio-multistreams");
-            }
-
-            if (request.Profile.IncludeSubtitles)
-            {
-                args.Add("--write-subs");
-                args.Add("--write-auto-subs");
-                args.Add("--sub-langs");
-                args.Add(GetSubtitleLanguages(request.Preferences.Language));
-                args.Add("--convert-subs");
-                args.Add("srt");
-            }
-        }
-        else
-        {
-            args.Add("-x");
-            args.Add("--audio-format");
-            args.Add(request.Profile.AudioFormat.ToString().ToLowerInvariant());
-            args.Add("--audio-quality");
-            args.Add("0");
-        }
-
-        args.Add(request.Url);
-        return string.Join(" ", args.Select(Quote));
-    }
-
-    private static string BuildOutputTemplate(ResolvedDownloadProfile profile)
-    {
-        var quality = profile.Quality switch
-        {
-            QualityPreset.P720 => "720p",
-            QualityPreset.P1080 => "1080p",
-            QualityPreset.P4K => "4k",
-            QualityPreset.P8K => "8k",
-            _ => "best"
-        };
-
-        var profileKey = profile.Kind == DownloadKind.Video
-            ? $"video_{profile.VideoFormat.ToString().ToLowerInvariant()}_{quality}"
-            : $"audio_{profile.AudioFormat.ToString().ToLowerInvariant()}_{quality}";
-
-        return $"%(title).180B [%(id)s] [{profileKey}].%(ext)s";
-    }
-
-    private static string BuildFormatSelector(ResolvedDownloadProfile profile)
-    {
-        var unrestrictedBest = "bestvideo*+bestaudio/best";
-        string filtered = unrestrictedBest;
-        var maxHeight = profile.Quality switch
-        {
-            QualityPreset.P720 => 720,
-            QualityPreset.P1080 => 1080,
-            QualityPreset.P4K => 2160,
-            QualityPreset.P8K => 4320,
-            _ => (int?)null
-        };
-
-        if (maxHeight is not null)
-        {
-            filtered = $"bestvideo*[height<={maxHeight}]+bestaudio/best[height<={maxHeight}]/{unrestrictedBest}";
-        }
-
-        if (profile.VideoFormat != VideoFormat.Mp4)
-        {
-            return filtered;
-        }
-
-        return maxHeight is not null
-            ? $"bestvideo*[ext=mp4][height<={maxHeight}]+bestaudio[ext=m4a]/best[ext=mp4][height<={maxHeight}]/bestvideo*[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/{filtered}"
-            : $"bestvideo*[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/{unrestrictedBest}";
-    }
-
-    private static string GetSubtitleLanguages(AppLanguage language) => language switch
-    {
-        AppLanguage.Russian => "ru.*,en.*",
-        AppLanguage.Hindi => "hi.*,en.*",
-        AppLanguage.Chinese => "zh.*,zh-Hans,zh-Hant,en.*",
-        _ => "en.*"
-    };
-
     private static IEnumerable<BrowserCookieSource> GetCookieRetryOrder()
     {
         yield return BrowserCookieSource.Edge;
@@ -445,21 +325,6 @@ public sealed class YtDlpDownloadRuntimeService : IDownloadRuntimeService
         catch
         {
         }
-    }
-
-    private static string Quote(string value)
-    {
-        if (string.IsNullOrEmpty(value))
-        {
-            return "\"\"";
-        }
-
-        if (value.Any(char.IsWhiteSpace) || value.Contains('"', StringComparison.Ordinal))
-        {
-            return $"\"{value.Replace("\"", "\\\"", StringComparison.Ordinal)}\"";
-        }
-
-        return value;
     }
 
     private sealed record RuntimeTools(string YtDlpPath, string FfmpegPath, string? FfprobePath, string Directory);
