@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text;
 using Link2Download.Windows.Core.Abstractions;
 using Link2Download.Windows.Core.Models;
+using Link2Download.Windows.Core.Services;
 
 namespace Link2Download.Windows.Infrastructure.Runtime;
 
@@ -148,7 +149,10 @@ public sealed class YtDlpDownloadRuntimeService : IDownloadRuntimeService
             throw new DownloadException(DownloadFailureKind.ProcessFailed, ex.Message, innerException: ex);
         }
 
-        _diagnostics.Info($"Process start: {process.StartInfo.FileName} {process.StartInfo.Arguments}");
+        _diagnostics.Info(
+            $"Process start: {process.StartInfo.FileName}; " +
+            $"url={DiagnosticLogSanitizer.RedactUrl(request.Url)}; " +
+            $"cookieSource={cookieSource}; kind={request.Profile.Kind}; format={request.Profile.OutputFormatLabel}");
 
         var stdoutTask = ReadLinesAsync(process.StandardOutput, line =>
         {

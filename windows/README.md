@@ -81,6 +81,8 @@ The portable build no longer requires `Start Link2Download.cmd`. Runtime tools a
 - history: `%AppData%\Link2Download\history.json`
 - diagnostics log: `%LocalAppData%\Link2Download\logs\app.log`
 
+Diagnostics redact URL query strings and fragments before writing logs. Browser-cookie access is disabled by default; users can enable a specific browser source or `Auto` from the app settings when needed.
+
 ## First Build Goal
 
 The first meaningful Windows milestone should be:

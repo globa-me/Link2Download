@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Security.Cryptography;
 using Link2Download.Windows.Core.Abstractions;
 
 namespace Link2Download.Windows.Infrastructure.Runtime;
@@ -53,16 +54,33 @@ public static class EmbeddedRuntimeBootstrapper
         string destinationPath,
         CancellationToken cancellationToken)
     {
-        await using var resourceStream = bundleAssembly.GetManifestResourceStream(resourceName)
-            ?? throw new InvalidOperationException($"Missing embedded resource: {resourceName}");
-
-        var needsWrite = !File.Exists(destinationPath) ||
-                         new FileInfo(destinationPath).Length != resourceStream.Length;
-        if (!needsWrite)
+        await using (var resourceStream = OpenResourceStream(bundleAssembly, resourceName))
         {
-            return;
-        }
+            var needsWrite = !File.Exists(destinationPath) ||
+                             !await HasMatchingHashAsync(resourceStream, destinationPath, cancellationToken);
+            if (!needsWrite)
+            {
+                return;
+            }
 
+            if (resourceStream.CanSeek)
+            {
+                resourceStream.Position = 0;
+                await WriteResourceAsync(resourceStream, destinationPath, cancellationToken);
+            }
+            else
+            {
+                await using var writeStream = OpenResourceStream(bundleAssembly, resourceName);
+                await WriteResourceAsync(writeStream, destinationPath, cancellationToken);
+            }
+        }
+    }
+
+    private static async Task WriteResourceAsync(
+        Stream resourceStream,
+        string destinationPath,
+        CancellationToken cancellationToken)
+    {
         var tempPath = $"{destinationPath}.tmp";
         Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
 
@@ -72,5 +90,23 @@ public static class EmbeddedRuntimeBootstrapper
         }
 
         File.Move(tempPath, destinationPath, overwrite: true);
+    }
+
+    private static Stream OpenResourceStream(Assembly bundleAssembly, string resourceName)
+    {
+        return bundleAssembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException($"Missing embedded resource: {resourceName}");
+    }
+
+    private static async Task<bool> HasMatchingHashAsync(
+        Stream resourceStream,
+        string destinationPath,
+        CancellationToken cancellationToken)
+    {
+        var resourceHash = await SHA256.HashDataAsync(resourceStream, cancellationToken);
+        await using var destinationStream = File.OpenRead(destinationPath);
+        var destinationHash = await SHA256.HashDataAsync(destinationStream, cancellationToken);
+
+        return CryptographicOperations.FixedTimeEquals(resourceHash, destinationHash);
     }
 }

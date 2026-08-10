@@ -397,6 +397,10 @@ final class YTDLPService: @unchecked Sendable {
             throw DownloadError.processFailed("No output file detected for completed download.")
         }
 
+        if profile.kind == .video {
+            try validateCompletedVideosHaveAudio(completedFiles, tools: tools, taskID: taskID)
+        }
+
         return try normalizeForAppleSmartModeIfNeeded(
             files: completedFiles,
             profile: profile,
@@ -545,6 +549,10 @@ final class YTDLPService: @unchecked Sendable {
         )
     }
 
+    func cleanupStaleTemporaryFiles(in saveDirectory: String) {
+        cleanupStaleAppleTemporaryMOVFiles(in: URL(fileURLWithPath: saveDirectory, isDirectory: true))
+    }
+
     func inferServiceName(from urlString: String) -> String {
         guard let host = URL(string: urlString)?.host?.lowercased() else {
             return "web"
@@ -627,12 +635,12 @@ final class YTDLPService: @unchecked Sendable {
     }
 
     private func formatSelector(for profile: ResolvedDownloadProfile) -> String {
-        let unrestrictedBest = "bestvideo*+bestaudio/best"
+        let unrestrictedBest = "bestvideo*+bestaudio/best[vcodec!=none][acodec!=none]"
         let heightFilteredBest: String
         if let maxHeight = profile.quality.maxHeight {
             // Some extractors expose streams without height metadata.
             // Keep unrestricted fallbacks at the end to avoid hard failures.
-            heightFilteredBest = "bestvideo*[height<=\(maxHeight)]+bestaudio/best[height<=\(maxHeight)]/\(unrestrictedBest)"
+            heightFilteredBest = "bestvideo*[height<=\(maxHeight)]+bestaudio/best[height<=\(maxHeight)][vcodec!=none][acodec!=none]/\(unrestrictedBest)"
         } else {
             heightFilteredBest = unrestrictedBest
         }
@@ -645,15 +653,18 @@ final class YTDLPService: @unchecked Sendable {
         if let maxHeight = profile.quality.maxHeight {
             mp4Preferred = [
                 "bestvideo*[ext=mp4][height<=\(maxHeight)]+bestaudio[ext=m4a]",
-                "best[ext=mp4][height<=\(maxHeight)]",
+                "bestvideo*[ext=mp4][height<=\(maxHeight)]+bestaudio",
+                "best[ext=mp4][height<=\(maxHeight)][vcodec!=none][acodec!=none]",
                 "bestvideo*[ext=mp4]+bestaudio[ext=m4a]",
-                "best[ext=mp4]",
+                "bestvideo*[ext=mp4]+bestaudio",
+                "best[ext=mp4][vcodec!=none][acodec!=none]",
                 heightFilteredBest
             ].joined(separator: "/")
         } else {
             mp4Preferred = [
                 "bestvideo*[ext=mp4]+bestaudio[ext=m4a]",
-                "best[ext=mp4]",
+                "bestvideo*[ext=mp4]+bestaudio",
+                "best[ext=mp4][vcodec!=none][acodec!=none]",
                 unrestrictedBest
             ].joined(separator: "/")
         }
@@ -773,6 +784,43 @@ final class YTDLPService: @unchecked Sendable {
         return nil
     }
 
+    private func validateCompletedVideosHaveAudio(
+        _ files: [CompletedFile],
+        tools: RuntimeTools,
+        taskID: UUID
+    ) throws {
+        guard tools.ffprobe != nil else { return }
+
+        for file in files {
+            let fileURL = URL(fileURLWithPath: file.path)
+            guard probeCodecName(for: fileURL, streamSpecifier: "v:0", tools: tools, taskID: taskID) != nil else {
+                diagnostics.log(.warning, "Downloaded video job produced no video stream; file=\(fileURL.lastPathComponent)")
+                throw DownloadError.processFailed(
+                    "Downloaded file has no video stream. Try a different format/source."
+                )
+            }
+
+            let audioCodec = probeCodecName(for: fileURL, streamSpecifier: "a:0", tools: tools, taskID: taskID)
+            guard audioCodec != nil else { continue }
+
+            diagnostics.log(.warning, "Downloaded video has no audio stream; file=\(fileURL.lastPathComponent)")
+            removeRejectedDownloadedFile(fileURL, reason: "missing audio stream")
+            throw DownloadError.processFailed(
+                "Downloaded video has no audio stream. The source or selected format did not expose audio to yt-dlp."
+            )
+        }
+    }
+
+    private func removeRejectedDownloadedFile(_ url: URL, reason: String) {
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        do {
+            try fileManager.removeItem(at: url)
+            diagnostics.log(.info, "Removed rejected downloaded file; reason=\(reason) file=\(url.lastPathComponent)")
+        } catch {
+            diagnostics.log(.warning, "Failed to remove rejected downloaded file; reason=\(reason) file=\(url.lastPathComponent) error=\(error.localizedDescription)")
+        }
+    }
+
     private func subtitleLanguageSelector(for language: AppLanguage) -> String {
         switch language {
         case .russian:
@@ -882,7 +930,14 @@ final class YTDLPService: @unchecked Sendable {
         }
 
         let outputURL = appleCompatibleOutputURL(for: sourceURL)
+        cleanupStaleAppleTemporaryMOVFiles(in: outputURL.deletingLastPathComponent())
         let tempURL = temporaryMOVURL(nextTo: outputURL)
+        var tempURLMovedToOutput = false
+        defer {
+            if !tempURLMovedToOutput {
+                removeTemporaryMOVFile(tempURL, reason: "conversion cleanup")
+            }
+        }
 
         let sourceVideoCodec = probeCodecName(for: sourceURL, streamSpecifier: "v:0", tools: tools, taskID: taskID)
         let sourceAudioCodec = probeCodecName(for: sourceURL, streamSpecifier: "a:0", tools: tools, taskID: taskID)
@@ -923,7 +978,7 @@ final class YTDLPService: @unchecked Sendable {
             guard videoMode == .h264VideoToolbox else {
                 throw error
             }
-            try? fileManager.removeItem(at: tempURL)
+            removeTemporaryMOVFile(tempURL, reason: "hardware fallback cleanup")
             diagnostics.log(
                 .warning,
                 "Hardware Apple transcode failed; fallback to software libx264 for \(sourceURL.lastPathComponent): \(error.localizedDescription)"
@@ -949,6 +1004,7 @@ final class YTDLPService: @unchecked Sendable {
             try fileManager.removeItem(at: outputURL)
         }
         try fileManager.moveItem(at: tempURL, to: outputURL)
+        tempURLMovedToOutput = true
 
         if replaceOriginal, sourceURL.path != outputURL.path {
             try? fileManager.removeItem(at: sourceURL)
@@ -1525,6 +1581,44 @@ final class YTDLPService: @unchecked Sendable {
         return directory
             .appendingPathComponent(".\(stem).\(UUID().uuidString).tmp")
             .appendingPathExtension("mov")
+    }
+
+    private func cleanupStaleAppleTemporaryMOVFiles(in directory: URL) {
+        let staleAge: TimeInterval = 60 * 60
+        let cutoffDate = Date().addingTimeInterval(-staleAge)
+        let keys: [URLResourceKey] = [.contentModificationDateKey, .isRegularFileKey]
+        guard let urls = try? fileManager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: keys,
+            options: [.skipsPackageDescendants]
+        ) else {
+            return
+        }
+
+        for url in urls where isAppleTemporaryMOVFile(url) {
+            guard let values = try? url.resourceValues(forKeys: Set(keys)),
+                  values.isRegularFile == true,
+                  let modifiedAt = values.contentModificationDate,
+                  modifiedAt < cutoffDate else {
+                continue
+            }
+            removeTemporaryMOVFile(url, reason: "stale conversion cleanup")
+        }
+    }
+
+    private func isAppleTemporaryMOVFile(_ url: URL) -> Bool {
+        let name = url.lastPathComponent
+        return name.hasPrefix(".") && name.hasSuffix(".tmp.mov")
+    }
+
+    private func removeTemporaryMOVFile(_ url: URL, reason: String) {
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        do {
+            try fileManager.removeItem(at: url)
+            diagnostics.log(.info, "Removed temporary Apple MOV file; reason=\(reason) file=\(url.lastPathComponent)")
+        } catch {
+            diagnostics.log(.warning, "Failed to remove temporary Apple MOV file; reason=\(reason) file=\(url.lastPathComponent) error=\(error.localizedDescription)")
+        }
     }
 
     private func resourceCandidates(name: String) -> [URL] {

@@ -1,5 +1,6 @@
 using System.Text;
 using Link2Download.Windows.Core.Abstractions;
+using Link2Download.Windows.Core.Services;
 
 namespace Link2Download.Windows.Infrastructure.Diagnostics;
 
@@ -43,6 +44,7 @@ public sealed class FileDiagnosticsLogger : IDiagnosticsLogger
             .Replace("\r\n", " | ", StringComparison.Ordinal)
             .Replace('\n', ' ')
             .Trim();
+        normalized = DiagnosticLogSanitizer.RedactUrls(normalized);
 
         if (string.IsNullOrWhiteSpace(normalized))
         {

@@ -41,6 +41,7 @@ final class DownloadManager: ObservableObject {
         try? FileManager.default.createDirectory(at: thumbnailsDirectoryURL, withIntermediateDirectories: true)
 
         loadHistory()
+        cleanupStaleTemporaryFiles()
     }
 
     var filteredRecords: [DownloadRecord] {
@@ -337,6 +338,13 @@ final class DownloadManager: ObservableObject {
 
     func clearToast() {
         toastMessage = nil
+    }
+
+    private func cleanupStaleTemporaryFiles() {
+        let saveDirectory = settings.saveDirectory
+        DispatchQueue.global(qos: .utility).async { [service] in
+            service.cleanupStaleTemporaryFiles(in: saveDirectory)
+        }
     }
 
     func copyDebugReportToClipboard() {

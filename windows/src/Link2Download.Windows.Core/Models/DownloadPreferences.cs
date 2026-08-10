@@ -12,7 +12,7 @@ public sealed class DownloadPreferences : ObservableObject
     private AudioFormat _audioFormat = AudioFormat.M4a;
     private string _saveDirectory = GetDefaultSaveDirectory();
     private SpeedLimitPreset _speedLimit = SpeedLimitPreset.Unlimited;
-    private BrowserCookieSource _cookieSource = BrowserCookieSource.Auto;
+    private BrowserCookieSource _cookieSource = BrowserCookieSource.None;
     private bool _includeSubtitles;
     private bool _includeAdditionalAudioTracks;
 
