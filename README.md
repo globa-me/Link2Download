@@ -2,6 +2,16 @@
 
 Native macOS and Windows desktop app for downloading video/audio from YouTube, Vimeo, TikTok, Instagram, and other services supported by `yt-dlp`.
 
+## Screenshots
+
+### Download queue and history
+
+![Link2Download main window with download controls, queue filters, and completed-download history](assets/screenshots/main-window.png)
+
+### Settings
+
+![Link2Download settings window with format, speed, browser-cookie, subtitle, and Apple MOV options](assets/screenshots/settings.png)
+
 ## Download for macOS
 
 Current stable version: **1.3.0**.
