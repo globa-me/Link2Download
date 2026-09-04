@@ -96,16 +96,17 @@ final class YTDLPService: @unchecked Sendable {
     }
 
     func fetchMetadata(urlString: String, tools: RuntimeTools, taskID: UUID? = nil) throws -> MediaMetadata {
-        let args = [
+        var args = [
             "--dump-single-json",
             "--skip-download",
-            "--no-warnings",
-            urlString
+            "--no-warnings"
         ]
+        args += youtubeExtractorArguments(for: urlString, cookieSource: .none)
+        args.append(urlString)
 
         let result = try runProcess(executable: tools.ytdlp, arguments: args, taskID: taskID)
         guard result.exitCode == 0 else {
-            let message = result.stderr.isEmpty ? result.stdout : result.stderr
+            let message = cleanProcessErrorMessage(stderr: result.stderr, stdout: result.stdout)
             throw DownloadError.metadataFailed(message)
         }
 
@@ -184,6 +185,16 @@ final class YTDLPService: @unchecked Sendable {
             "--print", "after_move:__L2D_FILE__:%(filepath)s"
         ]
 
+        args += youtubeExtractorArguments(for: urlString, cookieSource: preferences.cookieSource)
+
+        args += [
+            "--retries", "5",
+            "--fragment-retries", "5",
+            "--extractor-retries", "3",
+            "--retry-sleep", "http:linear=1:3:1",
+            "--retry-sleep", "fragment:linear=1:3:1"
+        ]
+
         if let limit = preferences.speedLimit.ytdlpRateValue {
             args += ["--limit-rate", limit]
         }
@@ -198,7 +209,13 @@ final class YTDLPService: @unchecked Sendable {
 
         switch profile.kind {
         case .video:
-            args += ["-f", formatOverride ?? formatSelector(for: profile)]
+            args += [
+                "-f",
+                formatOverride ?? formatSelector(
+                    for: profile,
+                    excludingUnstableYouTubeFormats: inferServiceName(from: urlString) == "YouTube"
+                )
+            ]
             args += ["--merge-output-format", profile.videoFormat.rawValue]
             if profile.includeAdditionalAudioTracks {
                 args += ["--audio-multistreams"]
@@ -387,9 +404,7 @@ final class YTDLPService: @unchecked Sendable {
         )
 
         guard result.exitCode == 0 else {
-            let message = [result.stderr, result.stdout]
-                .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                .joined(separator: "\n")
+            let message = cleanProcessErrorMessage(stderr: result.stderr, stdout: result.stdout)
             throw DownloadError.processFailed(message.isEmpty ? "yt-dlp failed" : message)
         }
 
@@ -472,6 +487,8 @@ final class YTDLPService: @unchecked Sendable {
             "--ignore-config"
         ]
 
+        args += youtubeExtractorArguments(for: urlString, cookieSource: preferences.cookieSource)
+
         let preparedCookies = try prepareCookieInput(
             for: preferences.cookieSource,
             urlString: urlString,
@@ -484,7 +501,7 @@ final class YTDLPService: @unchecked Sendable {
 
         let result = try runProcess(executable: tools.ytdlp, arguments: args, taskID: taskID)
         guard result.exitCode == 0 else {
-            let message = result.stderr.isEmpty ? result.stdout : result.stderr
+            let message = cleanProcessErrorMessage(stderr: result.stderr, stdout: result.stdout)
             throw DownloadError.metadataFailed(message)
         }
 
@@ -495,7 +512,11 @@ final class YTDLPService: @unchecked Sendable {
         }
 
         let formats = rawFormats.compactMap(FormatEntry.init(dictionary:))
-        return bestExplicitFormatSelector(from: formats, profile: profile)
+        return bestExplicitFormatSelector(
+            from: formats,
+            profile: profile,
+            excludingUnstableYouTubeFormats: inferServiceName(from: urlString) == "YouTube"
+        )
     }
 
     func transcodeVideo(
@@ -634,13 +655,22 @@ final class YTDLPService: @unchecked Sendable {
         }
     }
 
-    private func formatSelector(for profile: ResolvedDownloadProfile) -> String {
-        let unrestrictedBest = "bestvideo*+bestaudio/best[vcodec!=none][acodec!=none]"
+    private func formatSelector(
+        for profile: ResolvedDownloadProfile,
+        excludingUnstableYouTubeFormats: Bool = false
+    ) -> String {
+        // YouTube Premium/SABR entries can be advertised during one extraction and
+        // disappear on the next request. Prefer replaceable HTTPS formats so a
+        // logged-in browser session does not make a public video less reliable.
+        let reliabilityFilter = excludingUnstableYouTubeFormats
+            ? "[protocol!=sabr][format_note!*=Premium]"
+            : ""
+        let unrestrictedBest = "bestvideo*\(reliabilityFilter)+bestaudio\(reliabilityFilter)/best\(reliabilityFilter)[vcodec!=none][acodec!=none]"
         let heightFilteredBest: String
         if let maxHeight = profile.quality.maxHeight {
             // Some extractors expose streams without height metadata.
             // Keep unrestricted fallbacks at the end to avoid hard failures.
-            heightFilteredBest = "bestvideo*[height<=\(maxHeight)]+bestaudio/best[height<=\(maxHeight)][vcodec!=none][acodec!=none]/\(unrestrictedBest)"
+            heightFilteredBest = "bestvideo*\(reliabilityFilter)[height<=\(maxHeight)]+bestaudio\(reliabilityFilter)/best\(reliabilityFilter)[height<=\(maxHeight)][vcodec!=none][acodec!=none]/\(unrestrictedBest)"
         } else {
             heightFilteredBest = unrestrictedBest
         }
@@ -652,19 +682,19 @@ final class YTDLPService: @unchecked Sendable {
         let mp4Preferred: String
         if let maxHeight = profile.quality.maxHeight {
             mp4Preferred = [
-                "bestvideo*[ext=mp4][height<=\(maxHeight)]+bestaudio[ext=m4a]",
-                "bestvideo*[ext=mp4][height<=\(maxHeight)]+bestaudio",
-                "best[ext=mp4][height<=\(maxHeight)][vcodec!=none][acodec!=none]",
-                "bestvideo*[ext=mp4]+bestaudio[ext=m4a]",
-                "bestvideo*[ext=mp4]+bestaudio",
-                "best[ext=mp4][vcodec!=none][acodec!=none]",
+                "bestvideo*\(reliabilityFilter)[ext=mp4][height<=\(maxHeight)]+bestaudio\(reliabilityFilter)[ext=m4a]",
+                "bestvideo*\(reliabilityFilter)[ext=mp4][height<=\(maxHeight)]+bestaudio\(reliabilityFilter)",
+                "best\(reliabilityFilter)[ext=mp4][height<=\(maxHeight)][vcodec!=none][acodec!=none]",
+                "bestvideo*\(reliabilityFilter)[ext=mp4]+bestaudio\(reliabilityFilter)[ext=m4a]",
+                "bestvideo*\(reliabilityFilter)[ext=mp4]+bestaudio\(reliabilityFilter)",
+                "best\(reliabilityFilter)[ext=mp4][vcodec!=none][acodec!=none]",
                 heightFilteredBest
             ].joined(separator: "/")
         } else {
             mp4Preferred = [
-                "bestvideo*[ext=mp4]+bestaudio[ext=m4a]",
-                "bestvideo*[ext=mp4]+bestaudio",
-                "best[ext=mp4][vcodec!=none][acodec!=none]",
+                "bestvideo*\(reliabilityFilter)[ext=mp4]+bestaudio\(reliabilityFilter)[ext=m4a]",
+                "bestvideo*\(reliabilityFilter)[ext=mp4]+bestaudio\(reliabilityFilter)",
+                "best\(reliabilityFilter)[ext=mp4][vcodec!=none][acodec!=none]",
                 unrestrictedBest
             ].joined(separator: "/")
         }
@@ -680,6 +710,8 @@ final class YTDLPService: @unchecked Sendable {
         let audioCodec: String?
         let bitrate: Double?
         let audioBitrate: Double?
+        let protocolName: String?
+        let formatNote: String?
 
         init?(dictionary: [String: Any]) {
             guard let id = dictionary["format_id"] as? String,
@@ -694,6 +726,8 @@ final class YTDLPService: @unchecked Sendable {
             self.audioCodec = (dictionary["acodec"] as? String)?.lowercased()
             self.bitrate = Self.doubleValue(from: dictionary["tbr"])
             self.audioBitrate = Self.doubleValue(from: dictionary["abr"])
+            self.protocolName = (dictionary["protocol"] as? String)?.lowercased()
+            self.formatNote = (dictionary["format_note"] as? String)?.lowercased()
         }
 
         var isVideoOnly: Bool {
@@ -718,7 +752,8 @@ final class YTDLPService: @unchecked Sendable {
 
     private func bestExplicitFormatSelector(
         from formats: [FormatEntry],
-        profile: ResolvedDownloadProfile
+        profile: ResolvedDownloadProfile,
+        excludingUnstableYouTubeFormats: Bool = false
     ) -> String? {
         let maxHeight = profile.quality.maxHeight
 
@@ -733,7 +768,11 @@ final class YTDLPService: @unchecked Sendable {
             preferExts: [String] = []
         ) -> [FormatEntry] {
             formats
-                .filter { predicate($0) && respectsHeight($0) }
+                .filter {
+                    let isStable = !excludingUnstableYouTubeFormats ||
+                        ($0.protocolName != "sabr" && !($0.formatNote ?? "").contains("premium"))
+                    return predicate($0) && respectsHeight($0) && isStable
+                }
                 .sorted { lhs, rhs in
                     let lhsExtRank = preferExts.firstIndex(of: lhs.ext) ?? Int.max
                     let rhsExtRank = preferExts.firstIndex(of: rhs.ext) ?? Int.max
@@ -800,14 +839,13 @@ final class YTDLPService: @unchecked Sendable {
                 )
             }
 
-            let audioCodec = probeCodecName(for: fileURL, streamSpecifier: "a:0", tools: tools, taskID: taskID)
-            guard audioCodec != nil else { continue }
-
-            diagnostics.log(.warning, "Downloaded video has no audio stream; file=\(fileURL.lastPathComponent)")
-            removeRejectedDownloadedFile(fileURL, reason: "missing audio stream")
-            throw DownloadError.processFailed(
-                "Downloaded video has no audio stream. The source or selected format did not expose audio to yt-dlp."
-            )
+            guard probeCodecName(for: fileURL, streamSpecifier: "a:0", tools: tools, taskID: taskID) != nil else {
+                diagnostics.log(.warning, "Downloaded video has no audio stream; file=\(fileURL.lastPathComponent)")
+                removeRejectedDownloadedFile(fileURL, reason: "missing audio stream")
+                throw DownloadError.processFailed(
+                    "Downloaded video has no audio stream. The source or selected format did not expose audio to yt-dlp."
+                )
+            }
         }
     }
 
@@ -838,6 +876,20 @@ final class YTDLPService: @unchecked Sendable {
             if code.hasPrefix("zh") { return "zh.*,zh-Hans,zh-Hant,en.*" }
             return "en.*"
         }
+    }
+
+    private func youtubeExtractorArguments(
+        for urlString: String,
+        cookieSource: BrowserCookieSource
+    ) -> [String] {
+        guard inferServiceName(from: urlString) == "YouTube" else { return [] }
+
+        // tv_embedded currently exposes stable direct HTTPS formats at full
+        // quality and remains available when account cookies are supplied.
+        // Keep the cookie parameter in this helper because client capabilities
+        // can change and authenticated routing may need to diverge again.
+        _ = cookieSource
+        return ["--extractor-args", "youtube:player_client=tv_embedded"]
     }
 
     private enum AppleVideoConversionMode: Equatable {
@@ -1117,9 +1169,7 @@ final class YTDLPService: @unchecked Sendable {
         )
 
         guard result.exitCode == 0 else {
-            let message = [result.stderr, result.stdout]
-                .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                .joined(separator: "\n")
+            let message = cleanProcessErrorMessage(stderr: result.stderr, stdout: result.stdout)
             try? fileManager.removeItem(at: tempURL)
             throw DownloadError.processFailed(message.isEmpty ? "ffmpeg conversion failed" : message)
         }
@@ -1853,6 +1903,45 @@ final class YTDLPService: @unchecked Sendable {
         let parts = [executable.path] + arguments
         let rendered = parts.map(quotedArgument).joined(separator: " ")
         return truncated(rendered, max: 1200)
+    }
+
+    private func cleanProcessErrorMessage(stderr: String, stdout: String) -> String {
+        func isInternalProtocolLine(_ line: String) -> Bool {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.hasPrefix("__L2D_") ||
+                   trimmed.contains("__L2D_META__:") ||
+                   trimmed.contains("__L2D_ITEM__:") ||
+                   trimmed.contains("__L2D_PROGRESS__:") ||
+                   trimmed.contains("__L2D_FILE__:") ||
+                   trimmed.contains("__L2D_STATUS_")
+        }
+
+        let stderrLines = stderr
+            .split(whereSeparator: \.isNewline)
+            .map(String.init)
+            .map { sanitizeConsoleLine($0) }
+            .filter { !$0.isEmpty && !isInternalProtocolLine($0) }
+
+        let stdoutLines = stdout
+            .split(whereSeparator: \.isNewline)
+            .map(String.init)
+            .map { sanitizeConsoleLine($0) }
+            .filter { !$0.isEmpty && !isInternalProtocolLine($0) }
+
+        let errorLines = (stderrLines + stdoutLines).filter { $0.hasPrefix("ERROR:") || $0.contains("ERROR:") }
+        if !errorLines.isEmpty {
+            return errorLines.joined(separator: "\n")
+        }
+
+        if !stderrLines.isEmpty {
+            return stderrLines.joined(separator: "\n")
+        }
+
+        if !stdoutLines.isEmpty {
+            return stdoutLines.joined(separator: "\n")
+        }
+
+        return "yt-dlp failed"
     }
 
     private func sanitizeConsoleLine(_ raw: String) -> String {

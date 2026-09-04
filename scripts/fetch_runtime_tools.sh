@@ -10,6 +10,15 @@ mkdir -p "$BIN_DIR" "$TMP_DIR"
 
 echo "Downloading yt-dlp (official release binary)..."
 curl -L "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos" -o "$BIN_DIR/yt-dlp"
+curl -L "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS" -o "$TMP_DIR/yt-dlp-SHA2-256SUMS"
+YTDLP_SHA256="$(awk '$2 == "yt-dlp_macos" { print $1 }' "$TMP_DIR/yt-dlp-SHA2-256SUMS")"
+ACTUAL_YTDLP_SHA256="$(shasum -a 256 "$BIN_DIR/yt-dlp" | awk '{print $1}')"
+if [[ -z "$YTDLP_SHA256" || "$ACTUAL_YTDLP_SHA256" != "$YTDLP_SHA256" ]]; then
+  echo "Error: checksum verification failed for yt-dlp_macos"
+  echo "Expected: ${YTDLP_SHA256:-missing}"
+  echo "Actual:   $ACTUAL_YTDLP_SHA256"
+  exit 1
+fi
 chmod +x "$BIN_DIR/yt-dlp"
 
 FFMPEG_ZIP="$TMP_DIR/ffmpeg.zip"
@@ -21,8 +30,8 @@ if [[ "$HOST_ARCH" == "arm64" ]]; then
   echo "Downloading ffmpeg + ffprobe (Apple Silicon static builds)..."
   curl -L "https://www.osxexperts.net/ffmpeg80arm.zip" -o "$FFMPEG_ZIP"
   curl -L "https://www.osxexperts.net/ffprobe80arm.zip" -o "$FFPROBE_ZIP"
-  FFMPEG_SHA256="77d2c853f431318d55ec02676d9b2f185ebfdddb9f7677a251fbe453affe025a"
-  FFPROBE_SHA256="babf170e86bd6b0b2fefee5fa56f57721b0acb98ad2794b095d8030b02857dfe"
+  FFMPEG_SHA256="0d4efcaf6a098430a708e0af694a84792938921fa126162787ae98c6151d7a95"
+  FFPROBE_SHA256="b46eb342707ec0d31d3e8337bb56831e59c9e20918f414fd7a9d65a32fcb348f"
 else
   echo "Downloading ffmpeg + ffprobe (Intel static builds)..."
   curl -L "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip" -o "$FFMPEG_ZIP"

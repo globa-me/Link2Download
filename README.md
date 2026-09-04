@@ -1,20 +1,39 @@
-# Link2Download
+<p align="center">
+  <img src="assets/app-icon.png" width="104" alt="Link2Download app icon">
+</p>
 
-Native macOS and Windows desktop app for downloading video/audio from YouTube, Vimeo, TikTok, Instagram, and other services supported by `yt-dlp`.
+<h1 align="center">Link2Download</h1>
+
+<p align="center">Native desktop downloader for macOS and Windows, powered by <code>yt-dlp</code>.</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/macOS-12%2B-111111?logo=apple" alt="macOS 12 or newer">
+  <img src="https://img.shields.io/badge/Windows-.NET%208-512BD4?logo=dotnet" alt="Windows with .NET 8">
+  <img src="https://img.shields.io/badge/release-v1.4.1-0875E1" alt="Release 1.4.1">
+</p>
 
 ## Screenshots
 
-### Download queue and history
+<table>
+  <tr>
+    <td width="66%"><strong>Smart download and history</strong></td>
+    <td width="34%"><strong>Compact manual mode</strong></td>
+  </tr>
+  <tr>
+    <td><img src="assets/screenshots/main-window.png" alt="Link2Download smart download controls and history"></td>
+    <td><img src="assets/screenshots/compact-window.png" alt="Link2Download compact manual layout"></td>
+  </tr>
+</table>
 
-![Link2Download main window with download controls, queue filters, and completed-download history](assets/screenshots/main-window.png)
-
-### Settings
-
-![Link2Download settings window with format, speed, browser-cookie, subtitle, and Apple MOV options](assets/screenshots/settings.png)
+<details>
+  <summary><strong>Settings</strong></summary>
+  <br>
+  <img src="assets/screenshots/settings.png" alt="Link2Download settings">
+</details>
 
 ## Download for macOS
 
-Current stable version: **1.3.0**.
+Current stable version: **1.4.1**.
 
 - [Download Link2Download-Installer.dmg](https://github.com/globa-me/Link2Download/releases/latest/download/Link2Download-Installer.dmg)
 - [Download the optional unblock helper](https://github.com/globa-me/Link2Download/releases/latest/download/Enable_Link2Download.command)
@@ -79,6 +98,12 @@ Building from source avoids the downloaded-app approval prompt in the normal cas
    ```bash
    ./scripts/build_app.sh
    open build/Link2Download.app
+   ```
+
+   To verify the bundled YouTube runtime with a short partial download:
+
+   ```bash
+   ./scripts/test_youtube_runtime.sh
    ```
 
 6. Optional: create the same DMG-style installer used for releases:

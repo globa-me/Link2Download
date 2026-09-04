@@ -699,16 +699,54 @@ final class DownloadManager: ObservableObject {
             )
             return (files, preferences)
         } catch {
-            guard shouldRetryWithBrowserCookies(after: error, preferences: preferences) else {
-                throw error
+            var lastError: Error = error
+            var mostRelevantError: Error = error
+
+            if isRequestedFormatUnavailableError(error) {
+                do {
+                    if let explicitSelector = try await runOffMain({
+                        try self.service.resolveExplicitFormatSelector(
+                            urlString: request.urlString,
+                            profile: request.profile,
+                            preferences: preferences,
+                            tools: tools,
+                            taskID: request.recordID
+                        )
+                    }) {
+                        diagnostics.log(
+                            .info,
+                            "Retrying download with explicit format selector; id=\(request.recordID.uuidString) browser=\(preferences.cookieSource.rawValue) format=\(explicitSelector)"
+                        )
+                        let files = try await performDownloadAttempt(
+                            request,
+                            preferences: preferences,
+                            tools: tools,
+                            formatOverride: explicitSelector,
+                            onMetadata: onMetadata
+                        )
+                        return (files, preferences)
+                    }
+                } catch {
+                    lastError = error
+                    if !isBrowserCookieExtractionError(error) {
+                        mostRelevantError = error
+                    }
+                    diagnostics.log(
+                        .warning,
+                        "Explicit format selector retry failed; id=\(request.recordID.uuidString) browser=\(preferences.cookieSource.rawValue) error=\(error.localizedDescription)"
+                    )
+                }
+            }
+
+            guard shouldRetryWithBrowserCookies(after: lastError, preferences: preferences) else {
+                throw lastError
             }
 
             let retrySources = automaticCookieRetrySources(for: request.urlString)
             guard !retrySources.isEmpty else {
-                throw error
+                throw lastError
             }
 
-            var lastError: Error = error
             for source in retrySources {
                 var retryPreferences = preferences
                 retryPreferences.cookieSource = source
@@ -737,6 +775,9 @@ final class DownloadManager: ObservableObject {
                     return (files, retryPreferences)
                 } catch {
                     lastError = error
+                    if !isBrowserCookieExtractionError(error) {
+                        mostRelevantError = error
+                    }
 
                     if isRequestedFormatUnavailableError(error) {
                         do {
@@ -768,6 +809,9 @@ final class DownloadManager: ObservableObject {
                             }
                         } catch {
                             lastError = error
+                            if !isBrowserCookieExtractionError(error) {
+                                mostRelevantError = error
+                            }
                             diagnostics.log(
                                 .warning,
                                 "Explicit format selector retry failed; id=\(request.recordID.uuidString) browser=\(source.rawValue) error=\(error.localizedDescription)"
@@ -785,7 +829,7 @@ final class DownloadManager: ObservableObject {
                 }
             }
 
-            throw lastError
+            throw mostRelevantError
         }
     }
 
@@ -1163,6 +1207,20 @@ final class DownloadManager: ObservableObject {
 
     private func userFriendlyErrorMessage(_ error: Error, sourceURL: String) -> String {
         let raw = error.localizedDescription
+            .split(whereSeparator: \.isNewline)
+            .map(String.init)
+            .filter { line in
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                return !trimmed.hasPrefix("__L2D_") &&
+                       !trimmed.contains("__L2D_META__:") &&
+                       !trimmed.contains("__L2D_ITEM__:") &&
+                       !trimmed.contains("__L2D_PROGRESS__:") &&
+                       !trimmed.contains("__L2D_FILE__:") &&
+                       !trimmed.contains("__L2D_STATUS_")
+            }
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
         let lower = raw.lowercased()
         let isVimeoSource = sourceURL.lowercased().contains("vimeo.com")
         let isYouTubeSource = {
@@ -1179,6 +1237,10 @@ final class DownloadManager: ObservableObject {
             return settings.t("error.vimeo.linkHint")
         }
 
+        if isYouTubeSource && (lower.contains("403") || lower.contains("forbidden")) {
+            return settings.t("error.youtube.forbiddenHint")
+        }
+
         if isAuthenticationRestrictedError(error) {
             return settings.t("error.youtube.authHint")
         }
@@ -1191,7 +1253,7 @@ final class DownloadManager: ObservableObject {
             return settings.t("error.youtube.formatHint")
         }
 
-        return raw
+        return raw.isEmpty ? error.localizedDescription : raw
     }
 
     private func buildDebugReport() -> String {
@@ -1351,11 +1413,22 @@ final class DownloadManager: ObservableObject {
 
     private func isAuthenticationRestrictedError(_ error: Error) -> Bool {
         let lower = error.localizedDescription.lowercased()
+        if lower.contains("403") || lower.contains("forbidden") {
+            return true
+        }
+        if lower.contains("429") || lower.contains("too many requests") {
+            return true
+        }
+        if lower.contains("bot detection") || lower.contains("confirm you're not a bot") || lower.contains("confirm you are not a bot") {
+            return true
+        }
         return (lower.contains("sign in to confirm your age") ||
                 lower.contains("use --cookies-from-browser") ||
                 lower.contains("use --cookies for the authentication") ||
-                lower.contains("login required")) &&
-            lower.contains("[youtube]")
+                lower.contains("login required") ||
+                lower.contains("members-only") ||
+                lower.contains("private video")) &&
+            (lower.contains("[youtube]") || lower.contains("youtube"))
     }
 
     private func isBrowserCookieExtractionError(_ error: Error) -> Bool {

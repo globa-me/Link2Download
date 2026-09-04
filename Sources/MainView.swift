@@ -1,6 +1,22 @@
 import SwiftUI
 import AppKit
 
+enum MainWindowLayout {
+    case narrow
+    case compact
+    case regular
+
+    init(width: CGFloat) {
+        if width < 720 {
+            self = .narrow
+        } else if width < 1040 {
+            self = .compact
+        } else {
+            self = .regular
+        }
+    }
+}
+
 struct MainView: View {
     @ObservedObject var settings: SettingsStore
     @ObservedObject var manager: DownloadManager
@@ -17,16 +33,15 @@ struct MainView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let isCompact = proxy.size.width < 980
-            let isVeryCompact = proxy.size.width < 760
+            let layout = MainWindowLayout(width: proxy.size.width)
 
             ZStack(alignment: .bottom) {
-                VStack(spacing: isCompact ? 10 : 14) {
-                    header(isCompact: isCompact, isVeryCompact: isVeryCompact)
-                    filterBar(isCompact: isCompact, isVeryCompact: isVeryCompact)
-                    content
+                VStack(spacing: layout == .regular ? 14 : 10) {
+                    header(layout: layout)
+                    filterBar(layout: layout)
+                    content(layout: layout)
                 }
-                .padding(isCompact ? 12 : 16)
+                .padding(layout == .regular ? 16 : 12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .background(Theme.panel.ignoresSafeArea())
 
@@ -46,7 +61,7 @@ struct MainView: View {
                 }
             }
         }
-        .frame(minWidth: 760, minHeight: 520)
+        .frame(minWidth: 620, minHeight: 520)
         .sheet(isPresented: $isShowingSettings) {
             SettingsSheetView(settings: settings)
         }
@@ -55,39 +70,37 @@ struct MainView: View {
         }
     }
 
-    private func header(isCompact: Bool, isVeryCompact: Bool) -> some View {
+    private func header(layout: MainWindowLayout) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            if isCompact {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 12) {
-                        pasteButton
+            HStack(spacing: 12) {
+                pasteButton
 
-                        if !isVeryCompact {
-                            smartModeToggle
-                        }
-
-                        Spacer(minLength: 0)
-
-                        toolbarSettingsButtons
-                    }
-
-                    if isVeryCompact {
-                        smartModeToggle
-                    }
-
-                    toolbarPickers
-                }
-            } else {
-                HStack(spacing: 12) {
-                    pasteButton
+                if layout != .narrow {
                     smartModeToggle
-                    toolbarPickers
-                    Spacer(minLength: 0)
-                    toolbarSettingsButtons
                 }
+
+                Spacer(minLength: 0)
+                toolbarSettingsButtons
             }
 
-            if isCompact {
+            if layout == .narrow {
+                smartModeToggle
+            }
+
+            if settings.smartModeEnabled {
+                smartModeSummary
+            } else {
+                toolbarPickers
+            }
+
+            if layout == .regular {
+                HStack(spacing: 10) {
+                    saveDirectoryText(lineLimit: 1)
+                    chooseFolderButton
+                    resetDefaultsButton
+                    Spacer(minLength: 0)
+                }
+            } else {
                 VStack(alignment: .leading, spacing: 6) {
                     saveDirectoryText(lineLimit: 2)
 
@@ -95,16 +108,6 @@ struct MainView: View {
                         chooseFolderButton
                         resetDefaultsButton
                     }
-
-                    smartModeStatus(alignment: .leading)
-                }
-            } else {
-                HStack(spacing: 10) {
-                    saveDirectoryText(lineLimit: 1)
-                    chooseFolderButton
-                    resetDefaultsButton
-                    Spacer()
-                    smartModeStatus(alignment: .trailing)
                 }
             }
 
@@ -116,103 +119,48 @@ struct MainView: View {
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.ultraThinMaterial))
     }
 
-    private func filterBar(isCompact: Bool, isVeryCompact: Bool) -> some View {
-        Group {
-            if isCompact {
-                VStack(alignment: .leading, spacing: 10) {
-                    if isVeryCompact {
-                        filterPicker
-                            .frame(maxWidth: .infinity)
-                        searchField
-                            .frame(maxWidth: .infinity)
-                    } else {
-                        HStack(spacing: 10) {
-                            filterPicker
-                                .frame(width: 240)
-                            searchField
-                            Spacer(minLength: 0)
-                        }
-                    }
+    private func filterBar(layout: MainWindowLayout) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            if layout == .narrow {
+                filterPicker
+                    .frame(maxWidth: .infinity)
 
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            if !manager.records.isEmpty {
-                                statPill(title: settings.t("stats.active"), value: activeCount, color: Theme.accentStrong)
-                                statPill(title: settings.t("stats.queued"), value: queuedCount, color: .orange)
-                                statPill(title: settings.t("stats.completed"), value: completedCount, color: .green)
-                                statPill(title: settings.t("stats.failed"), value: failedCount, color: .red)
-                            }
-
-                            Text("\(manager.filteredRecords.count)")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Theme.secondaryText)
-
-                            if failedCount > 0 {
-                                Button(settings.t("toolbar.retryErrors")) {
-                                    manager.retryFailedAndCancelled()
-                                }
-                                .buttonStyle(.link)
-
-                                Button(settings.t("toolbar.clearErrors")) {
-                                    manager.removeFailedAndCancelled()
-                                }
-                                .buttonStyle(.link)
-                            }
-
-                            if !manager.records.isEmpty {
-                                Button(settings.t("toolbar.clearList")) {
-                                    manager.removeAll()
-                                }
-                                .buttonStyle(.link)
-                            }
-                        }
-                        .padding(.vertical, 1)
-                    }
+                HStack(spacing: 8) {
+                    searchField
+                        .frame(maxWidth: .infinity)
+                    historyActionsMenu
                 }
             } else {
-                HStack {
+                HStack(spacing: 10) {
                     filterPicker
-                        .frame(width: 260)
+                        .frame(width: layout == .regular ? 260 : 220)
 
                     searchField
+                    Spacer(minLength: 0)
+                    historyActionsMenu
+                }
+            }
 
-                    if !manager.records.isEmpty {
+            if !manager.records.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
                         statPill(title: settings.t("stats.active"), value: activeCount, color: Theme.accentStrong)
                         statPill(title: settings.t("stats.queued"), value: queuedCount, color: .orange)
                         statPill(title: settings.t("stats.completed"), value: completedCount, color: .green)
                         statPill(title: settings.t("stats.failed"), value: failedCount, color: .red)
+
+                        Text("\(manager.filteredRecords.count) / \(manager.records.count)")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Theme.secondaryText)
+                            .padding(.horizontal, 4)
                     }
-
-                    Spacer()
-
-                    Text("\(manager.filteredRecords.count)")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Theme.secondaryText)
-
-                    if failedCount > 0 {
-                        Button(settings.t("toolbar.retryErrors")) {
-                            manager.retryFailedAndCancelled()
-                        }
-                        .buttonStyle(.link)
-
-                        Button(settings.t("toolbar.clearErrors")) {
-                            manager.removeFailedAndCancelled()
-                        }
-                        .buttonStyle(.link)
-                    }
-
-                    if !manager.records.isEmpty {
-                        Button(settings.t("toolbar.clearList")) {
-                            manager.removeAll()
-                        }
-                        .buttonStyle(.link)
-                    }
+                    .padding(.vertical, 1)
                 }
             }
         }
     }
 
-    private var content: some View {
+    private func content(layout: MainWindowLayout) -> some View {
         Group {
             if manager.filteredRecords.isEmpty {
                 if manager.records.isEmpty {
@@ -226,6 +174,7 @@ struct MainView: View {
                         DownloadRowView(
                             settings: settings,
                             record: record,
+                            layout: layout,
                             isExpanded: expandedRecordIDs.contains(record.id),
                             onOpenFile: { manager.openFile(recordID: record.id) },
                             onShowFinder: { manager.openInFinder(recordID: record.id) },
@@ -239,7 +188,7 @@ struct MainView: View {
                             onToggleExpand: { toggleExpanded(record.id) }
                         )
                             .listRowInsets(EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10))
-                            .listRowBackground(Theme.rowBackground)
+                            .listRowBackground(Color.clear)
                             .contextMenu {
                                 if let path = record.filePath,
                                    FileManager.default.fileExists(atPath: path) {
@@ -369,61 +318,57 @@ struct MainView: View {
     }
 
     private var toolbarPickers: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                menuField(title: settings.t("toolbar.download")) {
-                    Picker("", selection: $settings.kind) {
-                        ForEach(DownloadKind.allCases) { kind in
-                            Text(settings.label(for: kind)).tag(kind)
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 180, maximum: 320), spacing: 10)],
+            alignment: .leading,
+            spacing: 10
+        ) {
+            menuField(title: settings.t("toolbar.download")) {
+                Picker("", selection: $settings.kind) {
+                    ForEach(DownloadKind.allCases) { kind in
+                        Text(settings.label(for: kind)).tag(kind)
+                    }
+                }
+                .labelsHidden()
+            }
+
+            menuField(title: settings.t("toolbar.quality")) {
+                Picker("", selection: $settings.quality) {
+                    ForEach(QualityPreset.userSelectableCases) { quality in
+                        Text(settings.label(for: quality)).tag(quality)
+                    }
+                }
+                .labelsHidden()
+            }
+
+            if settings.kind == .video {
+                menuField(title: settings.t("toolbar.format")) {
+                    Picker("", selection: $settings.videoFormat) {
+                        ForEach(VideoFormat.allCases) { format in
+                            Text(format.rawValue.uppercased()).tag(format)
                         }
                     }
                     .labelsHidden()
-                    .frame(width: 105)
                 }
-
-                menuField(title: settings.t("toolbar.quality")) {
-                    Picker("", selection: $settings.quality) {
-                        ForEach(QualityPreset.userSelectableCases) { quality in
-                            Text(settings.label(for: quality)).tag(quality)
+            } else {
+                menuField(title: settings.t("toolbar.format")) {
+                    Picker("", selection: $settings.audioFormat) {
+                        ForEach(AudioFormat.allCases) { format in
+                            Text(format.rawValue.uppercased()).tag(format)
                         }
                     }
                     .labelsHidden()
-                    .frame(width: 110)
-                }
-
-                if settings.kind == .video {
-                    menuField(title: settings.t("toolbar.format")) {
-                        Picker("", selection: $settings.videoFormat) {
-                            ForEach(VideoFormat.allCases) { format in
-                                Text(format.rawValue.uppercased()).tag(format)
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(width: 85)
-                    }
-                } else {
-                    menuField(title: settings.t("toolbar.format")) {
-                        Picker("", selection: $settings.audioFormat) {
-                            ForEach(AudioFormat.allCases) { format in
-                                Text(format.rawValue.uppercased()).tag(format)
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(width: 85)
-                    }
-                }
-
-                menuField(title: settings.t("toolbar.speed")) {
-                    Picker("", selection: $settings.speedLimit) {
-                        ForEach(SpeedLimitPreset.allCases) { speed in
-                            Text(settings.label(for: speed)).tag(speed)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(width: 110)
                 }
             }
-            .padding(.vertical, 2)
+
+            menuField(title: settings.t("toolbar.speed")) {
+                Picker("", selection: $settings.speedLimit) {
+                    ForEach(SpeedLimitPreset.allCases) { speed in
+                        Text(settings.label(for: speed)).tag(speed)
+                    }
+                }
+                .labelsHidden()
+            }
         }
     }
 
@@ -465,35 +410,50 @@ struct MainView: View {
         .buttonStyle(.link)
     }
 
-    private func smartModeStatus(alignment: HorizontalAlignment) -> some View {
-        VStack(alignment: alignment, spacing: 2) {
-            Text(settings.smartModeEnabled ? settings.t("smart.enabled") : settings.t("smart.disabled"))
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Theme.secondaryText)
+    private var smartModeSummary: some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.accentStrong)
+                .padding(.top, 1)
 
-            if settings.smartModeEnabled {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(settings.t("smart.enabled"))
+                    .font(.system(size: 12, weight: .semibold))
+
                 Text(settings.appleTranscodeEnabled ? settings.t("smart.profileHint") : settings.t("smart.profileHintNoTranscode"))
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.secondaryText)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Theme.accent.opacity(0.10))
+        )
     }
 
     private var filterPicker: some View {
-        Picker("Filter", selection: $manager.listFilter) {
+        Picker(settings.t("toolbar.filter"), selection: $manager.listFilter) {
             Text(settings.t("filter.all")).tag(ListFilter.all)
             Text(settings.t("filter.video")).tag(ListFilter.video)
             Text(settings.t("filter.audio")).tag(ListFilter.audio)
         }
+        .labelsHidden()
         .pickerStyle(.segmented)
+        .accessibilityLabel(Text(settings.t("toolbar.filter")))
     }
 
     private var searchField: some View {
         HStack(spacing: 6) {
             TextField(settings.t("toolbar.search"), text: $manager.searchQuery)
                 .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 280)
+                .frame(minWidth: 140, maxWidth: 320)
 
             if !manager.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Button {
@@ -509,14 +469,16 @@ struct MainView: View {
     }
 
     private func menuField<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.system(size: 12))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Theme.secondaryText)
             content()
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.regularMaterial))
     }
 
@@ -529,6 +491,40 @@ struct MainView: View {
         }
         .buttonStyle(.plain)
         .help(help)
+        .accessibilityLabel(Text(help))
+    }
+
+    @ViewBuilder
+    private var historyActionsMenu: some View {
+        if !manager.records.isEmpty {
+            Menu {
+                if failedCount > 0 {
+                    Button(settings.t("toolbar.retryErrors")) {
+                        manager.retryFailedAndCancelled()
+                    }
+
+                    Button(settings.t("toolbar.clearErrors")) {
+                        manager.removeFailedAndCancelled()
+                    }
+
+                    Divider()
+                }
+
+                Button(settings.t("toolbar.clearList")) {
+                    manager.removeAll()
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 32, height: 28)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.regularMaterial))
+            }
+            .menuStyle(.borderlessButton)
+            .l2dHideMenuIndicatorIfAvailable()
+            .fixedSize()
+            .help(settings.t("action.more"))
+            .accessibilityLabel(Text(settings.t("action.more")))
+        }
     }
 
     private func statPill(title: String, value: Int, color: Color) -> some View {
@@ -642,6 +638,7 @@ struct MainView: View {
 struct DownloadRowView: View {
     @ObservedObject var settings: SettingsStore
     let record: DownloadRecord
+    let layout: MainWindowLayout
     let isExpanded: Bool
     let onOpenFile: () -> Void
     let onShowFinder: () -> Void
@@ -657,120 +654,8 @@ struct DownloadRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                thumbnailView
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(record.title)
-                        .font(.system(size: 14, weight: .semibold))
-                        .lineLimit(1)
-
-                    if let uploader = record.uploaderName, !uploader.isEmpty {
-                        Text(uploader)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Theme.secondaryText)
-                            .lineLimit(1)
-                    }
-
-                    metadataBadges
-
-                    Text(fileNameLine)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.secondaryText)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 8)
-
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(statusText)
-                        .font(.system(size: 11, weight: .bold))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(statusColor.opacity(0.18))
-                        .foregroundStyle(statusColor)
-                        .clipShape(Capsule())
-
-                    Text(AppFormatters.relativeDateString(from: record.updatedAt))
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(Theme.secondaryText)
-                }
-            }
-
-            HStack(spacing: 8) {
-                if hasValidFile {
-                    rowActionButton(title: settings.t("action.openFile"), systemImage: "play.circle.fill", emphasized: true, action: onOpenFile)
-                    rowActionButton(title: settings.t("action.showFinder"), systemImage: "folder", emphasized: false, action: onShowFinder)
-                }
-
-                if record.status == .queued || record.status == .downloading {
-                    rowActionButton(title: settings.t("action.cancel"), systemImage: "xmark.circle", emphasized: false, action: onCancel)
-                }
-
-                if record.status == .failed || record.status == .cancelled {
-                    rowActionButton(title: settings.t("action.retry"), systemImage: "arrow.clockwise", emphasized: false, action: onRetry)
-                }
-
-                if canTranscodeCopy {
-                    rowActionButton(title: settings.t("action.transcodeCopy"), systemImage: "film.stack", emphasized: false, action: onTranscodeCopy)
-                }
-
-                Spacer(minLength: 0)
-
-                Menu {
-                    Button(settings.t("action.copySource"), action: onCopySource)
-                    Button(settings.t("action.openBrowser"), action: onOpenBrowser)
-
-                    if hasValidFile {
-                        Divider()
-                        Button(settings.t("action.openFile"), action: onOpenFile)
-                        Button(settings.t("action.showFinder"), action: onShowFinder)
-                        Button(settings.t("action.deleteFile"), action: onDeleteFile)
-                        if canTranscodeCopy {
-                            Button(settings.t("action.transcodeCopy"), action: onTranscodeCopy)
-                        }
-                    }
-
-                    if record.status == .queued || record.status == .downloading {
-                        Divider()
-                        Button(settings.t("action.cancel"), action: onCancel)
-                    }
-
-                    if record.status == .failed || record.status == .cancelled {
-                        Divider()
-                        Button(settings.t("action.retry"), action: onRetry)
-                    }
-
-                    if record.status != .queued && record.status != .downloading {
-                        Divider()
-                        Button(settings.t("action.removeFromList"), action: onRemoveFromList)
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "ellipsis.circle")
-                        Text(settings.t("action.more"))
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 10, weight: .bold))
-                    }
-                        .font(.system(size: 12, weight: .semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.regularMaterial))
-                }
-                .menuStyle(.borderlessButton)
-                .l2dHideMenuIndicatorIfAvailable()
-                .fixedSize(horizontal: true, vertical: false)
-
-                Button(action: onToggleExpand) {
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Theme.secondaryText)
-                        .frame(width: 28, height: 28)
-                        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.regularMaterial))
-                }
-                .buttonStyle(.plain)
-            }
-            .font(.system(size: 12))
+            rowHeader
+            rowActionBar
 
             if isExpanded {
                 expandedDetails
@@ -787,7 +672,7 @@ struct DownloadRowView: View {
             }
         }
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.thinMaterial))
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.rowBackground))
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(isHovered ? Theme.accent.opacity(0.40) : Color.clear, lineWidth: 1.1)
@@ -798,6 +683,136 @@ struct DownloadRowView: View {
         .onHover { hovering in
             isHovered = hovering
         }
+    }
+
+    private var rowHeader: some View {
+        HStack(alignment: .top, spacing: layout == .narrow ? 8 : 10) {
+            thumbnailView
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(record.title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .lineLimit(layout == .narrow ? 2 : 1)
+
+                if let uploader = record.uploaderName, !uploader.isEmpty {
+                    Text(uploader)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.secondaryText)
+                        .lineLimit(1)
+                }
+
+                metadataBadges
+            }
+
+            Spacer(minLength: layout == .narrow ? 2 : 8)
+            statusColumn
+        }
+    }
+
+    private var statusColumn: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            Text(statusText)
+                .font(.system(size: 11, weight: .bold))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(statusColor.opacity(0.18))
+                .foregroundStyle(statusColor)
+                .clipShape(Capsule())
+
+            Text(AppFormatters.relativeDateString(from: record.updatedAt))
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Theme.secondaryText)
+                .lineLimit(1)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var rowActionBar: some View {
+        HStack(spacing: 8) {
+            if hasValidFile {
+                rowActionButton(
+                    title: settings.t("action.openFile"),
+                    systemImage: "play.circle.fill",
+                    emphasized: true,
+                    action: onOpenFile
+                )
+            }
+
+            if record.status == .queued || record.status == .downloading {
+                rowActionButton(
+                    title: settings.t("action.cancel"),
+                    systemImage: "xmark.circle",
+                    emphasized: false,
+                    action: onCancel
+                )
+            }
+
+            if record.status == .failed || record.status == .cancelled {
+                rowActionButton(
+                    title: settings.t("action.retry"),
+                    systemImage: "arrow.clockwise",
+                    emphasized: false,
+                    action: onRetry
+                )
+            }
+
+            Spacer(minLength: 0)
+            rowActionsMenu
+
+            Button(action: onToggleExpand) {
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Theme.secondaryText)
+                    .frame(width: 30, height: 28)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.regularMaterial))
+            }
+            .buttonStyle(.plain)
+            .help(settings.t(isExpanded ? "action.hideDetails" : "action.showDetails"))
+            .accessibilityLabel(Text(settings.t(isExpanded ? "action.hideDetails" : "action.showDetails")))
+        }
+        .font(.system(size: 12))
+    }
+
+    private var rowActionsMenu: some View {
+        Menu {
+            Button(settings.t("action.copySource"), action: onCopySource)
+            Button(settings.t("action.openBrowser"), action: onOpenBrowser)
+
+            if hasValidFile {
+                Divider()
+                Button(settings.t("action.openFile"), action: onOpenFile)
+                Button(settings.t("action.showFinder"), action: onShowFinder)
+                Button(settings.t("action.deleteFile"), action: onDeleteFile)
+                if canTranscodeCopy {
+                    Button(settings.t("action.transcodeCopy"), action: onTranscodeCopy)
+                }
+            }
+
+            if record.status == .queued || record.status == .downloading {
+                Divider()
+                Button(settings.t("action.cancel"), action: onCancel)
+            }
+
+            if record.status == .failed || record.status == .cancelled {
+                Divider()
+                Button(settings.t("action.retry"), action: onRetry)
+            }
+
+            if record.status != .queued && record.status != .downloading {
+                Divider()
+                Button(settings.t("action.removeFromList"), action: onRemoveFromList)
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: 30, height: 28)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.regularMaterial))
+        }
+        .menuStyle(.borderlessButton)
+        .l2dHideMenuIndicatorIfAvailable()
+        .fixedSize()
+        .help(settings.t("action.more"))
+        .accessibilityLabel(Text(settings.t("action.more")))
     }
 
     private var hasValidFile: Bool {
@@ -820,17 +835,25 @@ struct DownloadRowView: View {
             Image(nsImage: image)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
-                .frame(width: 92, height: 54)
+                .frame(width: thumbnailWidth, height: thumbnailHeight)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         } else {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Theme.accent.opacity(0.15))
-                .frame(width: 92, height: 54)
+                .frame(width: thumbnailWidth, height: thumbnailHeight)
                 .overlay(
                     Image(systemName: record.kind == .video ? "film" : "music.note")
                         .foregroundStyle(Theme.accentStrong)
                 )
         }
+    }
+
+    private var thumbnailWidth: CGFloat {
+        layout == .narrow ? 76 : 92
+    }
+
+    private var thumbnailHeight: CGFloat {
+        layout == .narrow ? 44 : 54
     }
 
     private var fileNameLine: String {
@@ -1058,6 +1081,7 @@ struct DownloadRowView: View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
                 .font(.system(size: 12, weight: .semibold))
+                .lineLimit(1)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .foregroundStyle(emphasized ? .white : Theme.accentStrong)
@@ -1148,9 +1172,18 @@ struct DownloadRowView: View {
                 )
             }
 
-            HStack(spacing: 8) {
-                rowActionButton(title: settings.t("action.copySource"), systemImage: "doc.on.doc", emphasized: false, action: onCopySource)
-                rowActionButton(title: settings.t("action.openBrowser"), systemImage: "safari", emphasized: false, action: onOpenBrowser)
+            Group {
+                if layout == .narrow {
+                    VStack(alignment: .leading, spacing: 8) {
+                        rowActionButton(title: settings.t("action.copySource"), systemImage: "doc.on.doc", emphasized: false, action: onCopySource)
+                        rowActionButton(title: settings.t("action.openBrowser"), systemImage: "safari", emphasized: false, action: onOpenBrowser)
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        rowActionButton(title: settings.t("action.copySource"), systemImage: "doc.on.doc", emphasized: false, action: onCopySource)
+                        rowActionButton(title: settings.t("action.openBrowser"), systemImage: "safari", emphasized: false, action: onOpenBrowser)
+                    }
+                }
             }
             .padding(.top, 2)
         }
@@ -1164,16 +1197,30 @@ struct DownloadRowView: View {
     }
 
     private func detailRow(title: String, value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text("\(title):")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.secondaryText)
-                .frame(width: 140, alignment: .leading)
-            Text(value)
-                .font(.system(size: 11))
-                .lineLimit(1)
-                .textSelection(.enabled)
-            Spacer(minLength: 0)
+        Group {
+            if layout == .narrow {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(title):")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Theme.secondaryText)
+                    Text(value)
+                        .font(.system(size: 11))
+                        .lineLimit(2)
+                        .textSelection(.enabled)
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("\(title):")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Theme.secondaryText)
+                        .frame(width: 140, alignment: .leading)
+                    Text(value)
+                        .font(.system(size: 11))
+                        .lineLimit(1)
+                        .textSelection(.enabled)
+                    Spacer(minLength: 0)
+                }
+            }
         }
     }
 }
