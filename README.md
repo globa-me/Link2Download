@@ -62,7 +62,7 @@ open /Applications/Link2Download.app
 
 ## Build it yourself on a Mac
 
-Building from source avoids the downloaded-app approval prompt in the normal case. The build script automatically targets the architecture of the Mac that runs it (Apple Silicon or Intel).
+Building from source avoids the downloaded-app approval prompt in the normal case. By default, the scripts build a Universal 2 app for both Apple Silicon and 64-bit Intel Macs.
 
 ### What you need
 
@@ -113,7 +113,11 @@ Building from source avoids the downloaded-app approval prompt in the normal cas
    open build/Link2Download-Installer.dmg
    ```
 
-Build outputs are kept in `build/` and are not committed to Git. To rebuild after updating the source, run `git pull`, then repeat steps 4–6. If a runtime binary does not match your Mac’s architecture, rerun `./scripts/fetch_runtime_tools.sh` on that Mac before building.
+Build outputs are kept in `build/` and are not committed to Git. To rebuild after updating the source, run `git pull`, then repeat steps 4–6.
+
+## Developer ID releases
+
+The signed/notarized release workflow and credential setup are documented in [docs/macos-release.md](docs/macos-release.md). The public download instructions above still describe the existing unsigned-by-Developer-ID release; update them only after a notarized replacement is published.
 
 ## Current macOS features
 
@@ -132,9 +136,9 @@ The automatic runtime-tool download is the easiest option:
 ./scripts/fetch_runtime_tools.sh
 ```
 
-- On Apple Silicon, it downloads ARM64 static `ffmpeg` and `ffprobe` builds.
-- On Intel Macs, it downloads Intel builds.
-- The script prints the architecture it found. It must match the Mac compiling the app.
+- By default, it downloads both ARM64 and Intel static `ffmpeg`/`ffprobe` builds and combines them as Universal 2 binaries.
+- The official macOS `yt-dlp` binary is also checked for both architectures.
+- To make a smaller architecture-specific local build, run both scripts with the same override, for example `TARGET_ARCH=arm64` or `TARGET_ARCH=x86_64`.
 
 If you already have compatible tools installed locally, embed them instead:
 

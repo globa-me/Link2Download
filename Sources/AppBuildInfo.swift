@@ -2,7 +2,7 @@ import Foundation
 
 enum AppBuildInfo {
     static var version: String {
-        bundleValue(for: "CFBundleShortVersionString") ?? "1.4.1"
+        bundleValue(for: "CFBundleShortVersionString") ?? "1.4.2"
     }
 
     static var build: String? {

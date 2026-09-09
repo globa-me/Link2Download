@@ -13,61 +13,70 @@ FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
 MODULE_CACHE_DIR="$BUILD_DIR/module-cache"
 MIN_MACOS_VERSION="${MIN_MACOS_VERSION:-12.0}"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
-APP_VERSION="${APP_VERSION:-1.4.1}"
+APP_VERSION="${APP_VERSION:-1.4.2}"
 APP_BUILD="${APP_BUILD:-$(date +%d%m%y)}"
 SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
-TARGET_ARCH="${TARGET_ARCH:-$(uname -m)}"
+TARGET_ARCH="${TARGET_ARCH:-universal2}"
 
 case "$TARGET_ARCH" in
-  arm64|x86_64) ;;
+  arm64) TARGET_ARCHS=(arm64) ;;
+  x86_64) TARGET_ARCHS=(x86_64) ;;
+  universal2) TARGET_ARCHS=(arm64 x86_64) ;;
   *)
     echo "Unsupported target architecture: $TARGET_ARCH"
-    echo "Use TARGET_ARCH=arm64 or TARGET_ARCH=x86_64."
+    echo "Use TARGET_ARCH=universal2, TARGET_ARCH=arm64, or TARGET_ARCH=x86_64."
     exit 1
     ;;
 esac
 
-APP_BIN="$BUILD_DIR/${APP_NAME}-${TARGET_ARCH}"
+APP_BIN="$BUILD_DIR/${APP_NAME}-assembled"
 
 rm -rf "$APP_PATH"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$FRAMEWORKS_DIR" "$MODULE_CACHE_DIR"
 export SWIFT_MODULECACHE_PATH="$MODULE_CACHE_DIR"
 export CLANG_MODULE_CACHE_PATH="$MODULE_CACHE_DIR"
 
-swiftc \
-  -parse-as-library \
-  -module-name "$APP_NAME" \
-  -target "${TARGET_ARCH}-apple-macos${MIN_MACOS_VERSION}" \
-  -sdk "$SDK_PATH" \
-  -o "$APP_BIN" \
-  "$ROOT_DIR"/Sources/*.swift \
-  -framework SwiftUI \
-  -framework AppKit \
-  -framework UniformTypeIdentifiers \
-  -framework Security \
-  -lsqlite3
+ARCH_BINARIES=()
+for arch in "${TARGET_ARCHS[@]}"; do
+  arch_binary="$BUILD_DIR/${APP_NAME}-${arch}"
+  swiftc \
+    -parse-as-library \
+    -module-name "$APP_NAME" \
+    -target "${arch}-apple-macos${MIN_MACOS_VERSION}" \
+    -sdk "$SDK_PATH" \
+    -o "$arch_binary" \
+    "$ROOT_DIR"/Sources/*.swift \
+    -framework SwiftUI \
+    -framework AppKit \
+    -framework UniformTypeIdentifiers \
+    -framework Security \
+    -lsqlite3
+  ARCH_BINARIES+=("$arch_binary")
+done
+
+if [[ "${#ARCH_BINARIES[@]}" -eq 1 ]]; then
+  mv "${ARCH_BINARIES[0]}" "$APP_BIN"
+else
+  lipo -create "${ARCH_BINARIES[@]}" -output "$APP_BIN"
+  rm -f "${ARCH_BINARIES[@]}"
+fi
 
 mv "$APP_BIN" "$MACOS_DIR/$APP_NAME"
 chmod +x "$MACOS_DIR/$APP_NAME"
 
 if [[ -d "$ROOT_DIR/Resources/bin" ]]; then
-  if [[ -x "$ROOT_DIR/Resources/bin/ffmpeg" ]]; then
-    FFMPEG_FILE_INFO="$(file "$ROOT_DIR/Resources/bin/ffmpeg" 2>/dev/null || true)"
-    if ! echo "$FFMPEG_FILE_INFO" | grep -q "$TARGET_ARCH"; then
-      echo "Error: Resources/bin/ffmpeg does not support $TARGET_ARCH, which is the app target."
-      echo "Run ./scripts/fetch_runtime_tools.sh on this Mac and rebuild."
-      exit 1
-    fi
-  fi
-
-  if [[ -x "$ROOT_DIR/Resources/bin/ffprobe" ]]; then
-    FFPROBE_FILE_INFO="$(file "$ROOT_DIR/Resources/bin/ffprobe" 2>/dev/null || true)"
-    if ! echo "$FFPROBE_FILE_INFO" | grep -q "$TARGET_ARCH"; then
-      echo "Error: Resources/bin/ffprobe does not support $TARGET_ARCH, which is the app target."
-      echo "Run ./scripts/fetch_runtime_tools.sh on this Mac and rebuild."
-      exit 1
-    fi
-  fi
+  for tool_name in ffmpeg ffprobe yt-dlp; do
+    tool_path="$ROOT_DIR/Resources/bin/$tool_name"
+    [[ -x "$tool_path" ]] || continue
+    tool_archs="$(lipo -archs "$tool_path" 2>/dev/null || true)"
+    for arch in "${TARGET_ARCHS[@]}"; do
+      if [[ " $tool_archs " != *" $arch "* ]]; then
+        echo "Error: Resources/bin/$tool_name does not support $arch, which is required for $TARGET_ARCH."
+        echo "Run TARGET_ARCH=$TARGET_ARCH ./scripts/fetch_runtime_tools.sh and rebuild."
+        exit 1
+      fi
+    done
+  done
 
   mkdir -p "$RESOURCES_DIR/bin"
   cp -R "$ROOT_DIR/Resources/bin/." "$RESOURCES_DIR/bin/"
@@ -118,7 +127,20 @@ PLIST
 if [[ "$SIGNING_IDENTITY" == "-" ]]; then
   codesign --force --deep --sign - "$APP_PATH" >/dev/null 2>&1 || true
 else
-  codesign --force --deep --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$APP_PATH"
+  # Resources/bin is not a standard nested-code location: sign tools explicitly.
+  while IFS= read -r -d '' binary; do
+    if file "$binary" | grep -q 'Mach-O'; then
+      if [[ "$(basename "$binary")" == "yt-dlp" ]]; then
+        # The upstream PyInstaller executable extracts ad-hoc signed Python libraries.
+        codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" --entitlements "$ROOT_DIR/Resources/yt-dlp.entitlements" "$binary"
+      else
+        codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$binary"
+      fi
+    fi
+  done < <(find "$RESOURCES_DIR" "$FRAMEWORKS_DIR" -type f -print0)
+  codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$APP_PATH"
+  codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 fi
 
 echo "Built app: $APP_PATH"
+echo "App architectures: $(lipo -archs "$MACOS_DIR/$APP_NAME")"

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.2 — 2026-09-09
+
+### macOS
+
+- Ship one Universal 2 application and installer for Apple Silicon and 64-bit Intel Macs.
+- Build and validate Universal 2 copies of the app, `yt-dlp`, `ffmpeg`, and `ffprobe`.
+- Reject release notarization when any required executable is missing either architecture.
+- Add the Developer ID signing and notarization workflow for distributable releases.
+
 ## 1.4.1 — 2026-09-04
 
 ### macOS

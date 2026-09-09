@@ -4,82 +4,121 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BIN_DIR="$ROOT_DIR/Resources/bin"
 TMP_DIR="$ROOT_DIR/build/runtime-download"
-HOST_ARCH="$(uname -m)"
+TARGET_ARCH="${TARGET_ARCH:-universal2}"
+YTDLP_VERSION="2026.08.19"
+YTDLP_SHA256="0f192b7ec147ab6288885d6351d9ab67367640029b4377576ef46dd79cf7b202"
+INTEL_FFMPEG_VERSION="9.0.1"
 
+case "$TARGET_ARCH" in
+  arm64) TARGET_ARCHS=(arm64) ;;
+  x86_64) TARGET_ARCHS=(x86_64) ;;
+  universal2) TARGET_ARCHS=(arm64 x86_64) ;;
+  *)
+    echo "Unsupported target architecture: $TARGET_ARCH"
+    echo "Use TARGET_ARCH=universal2, TARGET_ARCH=arm64, or TARGET_ARCH=x86_64."
+    exit 1
+    ;;
+esac
+
+rm -rf "$TMP_DIR"
 mkdir -p "$BIN_DIR" "$TMP_DIR"
 
-echo "Downloading yt-dlp (official release binary)..."
-curl -L "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos" -o "$BIN_DIR/yt-dlp"
-curl -L "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS" -o "$TMP_DIR/yt-dlp-SHA2-256SUMS"
-YTDLP_SHA256="$(awk '$2 == "yt-dlp_macos" { print $1 }' "$TMP_DIR/yt-dlp-SHA2-256SUMS")"
-ACTUAL_YTDLP_SHA256="$(shasum -a 256 "$BIN_DIR/yt-dlp" | awk '{print $1}')"
-if [[ -z "$YTDLP_SHA256" || "$ACTUAL_YTDLP_SHA256" != "$YTDLP_SHA256" ]]; then
-  echo "Error: checksum verification failed for yt-dlp_macos"
-  echo "Expected: ${YTDLP_SHA256:-missing}"
-  echo "Actual:   $ACTUAL_YTDLP_SHA256"
-  exit 1
-fi
+download() {
+  local url="$1" destination="$2"
+  curl --fail --location --retry 3 --retry-delay 2 "$url" -o "$destination"
+}
+
+binary_has_arch() {
+  local binary="$1" required_arch="$2" archs
+  archs="$(lipo -archs "$binary" 2>/dev/null || true)"
+  [[ " $archs " == *" $required_arch "* ]]
+}
+
+verify_checksum() {
+  local file_path="$1" expected="$2" label="$3" actual
+  actual="$(shasum -a 256 "$file_path" | awk '{print $1}')"
+  if [[ "$actual" != "$expected" ]]; then
+    echo "Error: checksum verification failed for $label"
+    echo "Expected: $expected"
+    echo "Actual:   $actual"
+    exit 1
+  fi
+}
+
+echo "Downloading yt-dlp $YTDLP_VERSION (official Universal 2 release binary)..."
+download "https://github.com/yt-dlp/yt-dlp/releases/download/$YTDLP_VERSION/yt-dlp_macos" "$BIN_DIR/yt-dlp"
+verify_checksum "$BIN_DIR/yt-dlp" "$YTDLP_SHA256" "yt-dlp_macos $YTDLP_VERSION"
 chmod +x "$BIN_DIR/yt-dlp"
 
-FFMPEG_ZIP="$TMP_DIR/ffmpeg.zip"
-FFPROBE_ZIP="$TMP_DIR/ffprobe.zip"
-FFMPEG_SHA256=""
-FFPROBE_SHA256=""
+download_arm64_tools() {
+  local arch_dir="$TMP_DIR/arm64"
+  local ffmpeg_zip="$arch_dir/ffmpeg.zip"
+  local ffprobe_zip="$arch_dir/ffprobe.zip"
+  local expected_ffmpeg="0d4efcaf6a098430a708e0af694a84792938921fa126162787ae98c6151d7a95"
+  local expected_ffprobe="b46eb342707ec0d31d3e8337bb56831e59c9e20918f414fd7a9d65a32fcb348f"
 
-if [[ "$HOST_ARCH" == "arm64" ]]; then
+  mkdir -p "$arch_dir"
   echo "Downloading ffmpeg + ffprobe (Apple Silicon static builds)..."
-  curl -L "https://www.osxexperts.net/ffmpeg80arm.zip" -o "$FFMPEG_ZIP"
-  curl -L "https://www.osxexperts.net/ffprobe80arm.zip" -o "$FFPROBE_ZIP"
-  FFMPEG_SHA256="0d4efcaf6a098430a708e0af694a84792938921fa126162787ae98c6151d7a95"
-  FFPROBE_SHA256="b46eb342707ec0d31d3e8337bb56831e59c9e20918f414fd7a9d65a32fcb348f"
-else
-  echo "Downloading ffmpeg + ffprobe (Intel static builds)..."
-  curl -L "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip" -o "$FFMPEG_ZIP"
-  curl -L "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip" -o "$FFPROBE_ZIP"
-fi
+  download "https://www.osxexperts.net/ffmpeg80arm.zip" "$ffmpeg_zip"
+  download "https://www.osxexperts.net/ffprobe80arm.zip" "$ffprobe_zip"
 
-if [[ -n "$FFMPEG_SHA256" ]]; then
-  ACTUAL="$(shasum -a 256 "$FFMPEG_ZIP" | awk '{print $1}')"
-  if [[ "$ACTUAL" != "$FFMPEG_SHA256" ]]; then
-    echo "Warning: checksum mismatch for ffmpeg archive"
-    echo "Expected: $FFMPEG_SHA256"
-    echo "Actual:   $ACTUAL"
-    if [[ "${STRICT_CHECKSUM:-0}" == "1" ]]; then
+  verify_checksum "$ffmpeg_zip" "$expected_ffmpeg" "ARM64 ffmpeg 8.0 archive"
+  verify_checksum "$ffprobe_zip" "$expected_ffprobe" "ARM64 ffprobe 8.0 archive"
+
+  unzip -j -o "$ffmpeg_zip" ffmpeg -d "$arch_dir" >/dev/null
+  unzip -j -o "$ffprobe_zip" ffprobe -d "$arch_dir" >/dev/null
+  chmod +x "$arch_dir/ffmpeg" "$arch_dir/ffprobe"
+}
+
+download_x86_64_tools() {
+  local arch_dir="$TMP_DIR/x86_64"
+  local expected_ffmpeg="8a8c9e549983409fe6604b9aa665648b7a5def9407fe814c39c8b2ea7f64a48f"
+  local expected_ffprobe="d13f35db03456b7f65b7edb6437c86e23810fbfe91795e571f5b77211343b4f1"
+  mkdir -p "$arch_dir"
+  echo "Downloading ffmpeg + ffprobe $INTEL_FFMPEG_VERSION (Intel static builds)..."
+  download "https://evermeet.cx/ffmpeg/ffmpeg-$INTEL_FFMPEG_VERSION.zip" "$arch_dir/ffmpeg.zip"
+  download "https://evermeet.cx/ffmpeg/ffprobe-$INTEL_FFMPEG_VERSION.zip" "$arch_dir/ffprobe.zip"
+  verify_checksum "$arch_dir/ffmpeg.zip" "$expected_ffmpeg" "Intel ffmpeg $INTEL_FFMPEG_VERSION archive"
+  verify_checksum "$arch_dir/ffprobe.zip" "$expected_ffprobe" "Intel ffprobe $INTEL_FFMPEG_VERSION archive"
+  unzip -j -o "$arch_dir/ffmpeg.zip" ffmpeg -d "$arch_dir" >/dev/null
+  unzip -j -o "$arch_dir/ffprobe.zip" ffprobe -d "$arch_dir" >/dev/null
+  chmod +x "$arch_dir/ffmpeg" "$arch_dir/ffprobe"
+}
+
+for arch in "${TARGET_ARCHS[@]}"; do
+  "download_${arch}_tools"
+  for tool_name in ffmpeg ffprobe; do
+    if ! binary_has_arch "$TMP_DIR/$arch/$tool_name" "$arch"; then
+      echo "Error: downloaded $tool_name does not contain the required $arch architecture."
       exit 1
     fi
+  done
+done
+
+for tool_name in ffmpeg ffprobe; do
+  if [[ "${#TARGET_ARCHS[@]}" -eq 1 ]]; then
+    cp "$TMP_DIR/${TARGET_ARCHS[0]}/$tool_name" "$BIN_DIR/$tool_name"
+  else
+    lipo -create \
+      "$TMP_DIR/arm64/$tool_name" \
+      "$TMP_DIR/x86_64/$tool_name" \
+      -output "$BIN_DIR/$tool_name"
   fi
-fi
+  chmod +x "$BIN_DIR/$tool_name"
+done
 
-if [[ -n "$FFPROBE_SHA256" ]]; then
-  ACTUAL="$(shasum -a 256 "$FFPROBE_ZIP" | awk '{print $1}')"
-  if [[ "$ACTUAL" != "$FFPROBE_SHA256" ]]; then
-    echo "Warning: checksum mismatch for ffprobe archive"
-    echo "Expected: $FFPROBE_SHA256"
-    echo "Actual:   $ACTUAL"
-    if [[ "${STRICT_CHECKSUM:-0}" == "1" ]]; then
-      exit 1
-    fi
-  fi
-fi
-
-unzip -o "$FFMPEG_ZIP" -d "$TMP_DIR" >/dev/null
-unzip -o "$FFPROBE_ZIP" -d "$TMP_DIR" >/dev/null
-
-cp "$TMP_DIR/ffmpeg" "$BIN_DIR/ffmpeg"
-cp "$TMP_DIR/ffprobe" "$BIN_DIR/ffprobe"
-chmod +x "$BIN_DIR/ffmpeg" "$BIN_DIR/ffprobe"
 if command -v xattr >/dev/null 2>&1; then
-  xattr -cr "$BIN_DIR/ffmpeg" "$BIN_DIR/ffprobe" >/dev/null 2>&1 || true
+  xattr -cr "$BIN_DIR/yt-dlp" "$BIN_DIR/ffmpeg" "$BIN_DIR/ffprobe" >/dev/null 2>&1 || true
 fi
+
+for tool_name in yt-dlp ffmpeg ffprobe; do
+  for arch in "${TARGET_ARCHS[@]}"; do
+    if ! binary_has_arch "$BIN_DIR/$tool_name" "$arch"; then
+      echo "Error: $tool_name is missing the required $arch architecture."
+      exit 1
+    fi
+  done
+  echo "$tool_name architectures: $(lipo -archs "$BIN_DIR/$tool_name")"
+done
 
 echo "Runtime tools are ready in: $BIN_DIR"
-
-FFMPEG_ARCH="$(file "$BIN_DIR/ffmpeg" 2>/dev/null || true)"
-FFPROBE_ARCH="$(file "$BIN_DIR/ffprobe" 2>/dev/null || true)"
-echo "$FFMPEG_ARCH"
-echo "$FFPROBE_ARCH"
-
-if [[ "$HOST_ARCH" == "arm64" ]] && ! echo "$FFMPEG_ARCH" | grep -q "arm64"; then
-  echo "Warning: bundled ffmpeg is still not arm64."
-  echo "Use local arm64 binaries via ./scripts/prepare_embedded_tools.sh if needed."
-fi

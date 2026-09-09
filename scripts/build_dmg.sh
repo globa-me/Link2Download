@@ -20,6 +20,7 @@ BYPASS_SCRIPT_DST="$STAGING_DIR/$BYPASS_SCRIPT_NAME"
 INSTRUCTIONS_PATH="$STAGING_DIR/Install_Instructions.txt"
 TERMINAL_FIX_PATH="$STAGING_DIR/Run_If_Blocked.txt"
 MODULE_CACHE_DIR="$BUILD_DIR/module-cache"
+RELEASE_DMG="${RELEASE_DMG:-0}"
 
 if [[ ! -d "$APP_PATH" ]]; then
   echo "App not found: $APP_PATH"
@@ -27,7 +28,13 @@ if [[ ! -d "$APP_PATH" ]]; then
   exit 1
 fi
 
-if [[ ! -f "$BYPASS_SCRIPT_SRC" ]]; then
+if [[ "$RELEASE_DMG" == "1" ]]; then
+  : "${SIGNING_IDENTITY:?Set SIGNING_IDENTITY for a release DMG}"
+  codesign --verify --deep --strict "$APP_PATH"
+  xcrun stapler validate "$APP_PATH"
+fi
+
+if [[ "$RELEASE_DMG" != "1" && ! -f "$BYPASS_SCRIPT_SRC" ]]; then
   echo "Bypass script not found: $BYPASS_SCRIPT_SRC"
   exit 1
 fi
@@ -37,12 +44,16 @@ mkdir -p "$STAGING_DIR" "$BG_DIR" "$MODULE_CACHE_DIR"
 export SWIFT_MODULECACHE_PATH="$MODULE_CACHE_DIR"
 export CLANG_MODULE_CACHE_PATH="$MODULE_CACHE_DIR"
 
-rm -f "$DMG_PATH" "$TEMP_DMG"
+rm -f "$DMG_PATH" "$DMG_PATH.sha256" "$TEMP_DMG"
 
 cp -R "$APP_PATH" "$STAGING_DIR/$APP_BUNDLE"
+if [[ "$RELEASE_DMG" != "1" ]]; then
 cp "$BYPASS_SCRIPT_SRC" "$BYPASS_SCRIPT_DST"
 chmod +x "$BYPASS_SCRIPT_DST"
+fi
 ln -s /Applications "$STAGING_DIR/Applications"
+
+if [[ "$RELEASE_DMG" != "1" ]]; then
 
 cat > "$INSTRUCTIONS_PATH" <<'TEXT'
 Install Link2Download:
@@ -80,7 +91,9 @@ sudo spctl --add --label "Link2Download Local" /Applications/Link2Download.app
 open /Applications/Link2Download.app
 TEXT
 
-swift - <<'SWIFT' "$BG_PATH"
+fi
+
+swift - <<'SWIFT' "$BG_PATH" "$RELEASE_DMG"
 import AppKit
 import Foundation
 
@@ -114,8 +127,10 @@ let noteAttrs: [NSAttributedString.Key: Any] = [
 
 ("Link2Download").draw(at: NSPoint(x: 36, y: 500), withAttributes: titleAttrs)
 ("Drag app to Applications").draw(at: NSPoint(x: 36, y: 468), withAttributes: subtitleAttrs)
+if CommandLine.arguments[2] != "1" {
 ("If blocked: Privacy & Security -> Open Anyway").draw(at: NSPoint(x: 36, y: 438), withAttributes: noteAttrs)
 ("Fallback: Enable_Link2Download.command").draw(at: NSPoint(x: 36, y: 412), withAttributes: noteAttrs)
+}
 
 let shadow = NSShadow()
 shadow.shadowColor = NSColor(calibratedWhite: 0.0, alpha: 0.12)
@@ -184,9 +199,11 @@ osascript <<APPLESCRIPT
       set background picture of opts to file ".background:background.png"
       set position of item "$APP_BUNDLE" of container window to {220, 270}
       set position of item "Applications" of container window to {700, 270}
+      if "$RELEASE_DMG" is not "1" then
       set position of item "$BYPASS_SCRIPT_NAME" of container window to {220, 430}
       set position of item "Install_Instructions.txt" of container window to {460, 430}
       set position of item "Run_If_Blocked.txt" of container window to {700, 430}
+      end if
       close
       open
       update without registering applications
@@ -203,6 +220,12 @@ hdiutil convert "$TEMP_DMG" -format UDZO -imagekey zlib-level=9 -o "$DMG_PATH" >
 rm -f "$TEMP_DMG"
 rm -rf "$STAGING_DIR"
 
+if [[ "$RELEASE_DMG" == "1" ]]; then
+  codesign --force --timestamp --sign "$SIGNING_IDENTITY" "$DMG_PATH"
+  codesign --verify --strict "$DMG_PATH"
+  echo "Created signed DMG (notarization still required): $DMG_PATH"
+  exit 0
+fi
 cp "$BYPASS_SCRIPT_SRC" "$BUILD_DIR/$BYPASS_SCRIPT_NAME"
 chmod +x "$BUILD_DIR/$BYPASS_SCRIPT_NAME"
 
