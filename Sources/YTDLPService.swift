@@ -89,7 +89,7 @@ final class YTDLPService: @unchecked Sendable {
         }
         diagnostics.log(
             .info,
-            "Runtime tools selected; yt-dlp=\(ytdlp.path) ffmpeg=\(ffmpeg.path) ffprobe=\(ffprobe?.path ?? "missing")"
+            "Runtime tools selected; yt-dlp=\(ytdlp.path) ffmpeg=\(ffmpeg.path) ffprobe=\(ffprobe?.path ?? "missing") deno=\(ytdlp.deletingLastPathComponent().appendingPathComponent("deno").path)"
         )
 
         return RuntimeTools(ytdlp: ytdlp, ffmpeg: ffmpeg, ffprobe: ffprobe, ffmpegDir: ffmpegDir)
@@ -101,7 +101,6 @@ final class YTDLPService: @unchecked Sendable {
             "--skip-download",
             "--no-warnings"
         ]
-        args += youtubeExtractorArguments(for: urlString, cookieSource: .none)
         args.append(urlString)
 
         let result = try runProcess(executable: tools.ytdlp, arguments: args, taskID: taskID)
@@ -137,10 +136,9 @@ final class YTDLPService: @unchecked Sendable {
     func cancel(taskID: UUID) {
         processLock.lock()
         cancelledTaskIDs.insert(taskID)
-        let process = activeProcesses[taskID]
         processLock.unlock()
-
-        process?.terminate()
+        // The runner observes cancellation every 100 ms and owns termination.
+        // Do not signal a Process concurrently with its launch/exit here.
     }
 
     func fetchThumbnailData(urlString: String) -> Data? {
@@ -172,7 +170,8 @@ final class YTDLPService: @unchecked Sendable {
         var args: [String] = [
             "--progress",
             "--newline",
-            "--no-warnings",
+            "--no-quiet",
+            "--no-simulate",
             "--ignore-config",
             "--force-overwrites",
             "--no-continue",
@@ -185,7 +184,6 @@ final class YTDLPService: @unchecked Sendable {
             "--print", "after_move:__L2D_FILE__:%(filepath)s"
         ]
 
-        args += youtubeExtractorArguments(for: urlString, cookieSource: preferences.cookieSource)
 
         args += [
             "--retries", "5",
@@ -487,7 +485,6 @@ final class YTDLPService: @unchecked Sendable {
             "--ignore-config"
         ]
 
-        args += youtubeExtractorArguments(for: urlString, cookieSource: preferences.cookieSource)
 
         let preparedCookies = try prepareCookieInput(
             for: preferences.cookieSource,
@@ -876,20 +873,6 @@ final class YTDLPService: @unchecked Sendable {
             if code.hasPrefix("zh") { return "zh.*,zh-Hans,zh-Hant,en.*" }
             return "en.*"
         }
-    }
-
-    private func youtubeExtractorArguments(
-        for urlString: String,
-        cookieSource: BrowserCookieSource
-    ) -> [String] {
-        guard inferServiceName(from: urlString) == "YouTube" else { return [] }
-
-        // tv_embedded currently exposes stable direct HTTPS formats at full
-        // quality and remains available when account cookies are supplied.
-        // Keep the cookie parameter in this helper because client capabilities
-        // can change and authenticated routing may need to diverge again.
-        _ = cookieSource
-        return ["--extractor-args", "youtube:player_client=tv_embedded"]
     }
 
     private enum AppleVideoConversionMode: Equatable {
@@ -1781,109 +1764,62 @@ final class YTDLPService: @unchecked Sendable {
         }
 
         let startedAt = Date()
-        diagnostics.log(
-            .info,
-            "Process start; task=\(taskID?.uuidString ?? "-") cmd=\(commandLine(executable: executable, arguments: arguments))"
-        )
-
         let process = Process()
         process.executableURL = executable
-        process.arguments = arguments
+        if executable.lastPathComponent == "yt-dlp" {
+            let deno = executable.deletingLastPathComponent().appendingPathComponent("deno")
+            guard fileManager.isExecutableFile(atPath: deno.path) else {
+                throw DownloadError.toolsMissing(["deno (reinstall the complete application)"])
+            }
+            process.arguments = [
+                "--socket-timeout", "20", "--color", "never",
+                "--no-js-runtimes", "--js-runtimes", "deno:\(deno.path)"
+            ] + arguments
+        } else {
+            process.arguments = arguments
+        }
+
+        diagnostics.log(
+            .info,
+            "Process start; task=\(taskID?.uuidString ?? "-") cmd=\(commandLine(executable: executable, arguments: process.arguments ?? []))"
+        )
 
         var env = ProcessInfo.processInfo.environment
         env["LC_ALL"] = "en_US.UTF-8"
         env["LANG"] = "en_US.UTF-8"
         process.environment = env
 
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-
-        var stdoutData = Data()
-        var stderrData = Data()
-        var stdoutRemainder = ""
-        var stderrRemainder = ""
-        let lock = NSLock()
-
-        func consumeLines(data: Data, remainder: inout String, lineHandler: ((String) -> Void)?) {
-            guard !data.isEmpty else { return }
-            guard let chunk = String(data: data, encoding: .utf8) else { return }
-            let normalizedChunk = chunk.replacingOccurrences(of: "\r", with: "\n")
-            remainder += normalizedChunk
-
-            while let index = remainder.firstIndex(of: "\n") {
-                let line = sanitizeConsoleLine(String(remainder[..<index]))
-                remainder.removeSubrange(...index)
-                if !line.isEmpty {
-                    lineHandler?(line)
-                }
-            }
-        }
-
-        stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if data.isEmpty { return }
-            lock.lock()
-            stdoutData.append(data)
-            consumeLines(data: data, remainder: &stdoutRemainder, lineHandler: onStdoutLine)
-            lock.unlock()
-        }
-
-        stderrPipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if data.isEmpty { return }
-            lock.lock()
-            stderrData.append(data)
-            consumeLines(data: data, remainder: &stderrRemainder, lineHandler: onStderrLine)
-            lock.unlock()
-        }
-
+        register(process: process, taskID: taskID)
+        defer { unregister(taskID: taskID) }
+        let result: RuntimeProcessRunner.Result
         do {
-            register(process: process, taskID: taskID)
-            try process.run()
+            result = try RuntimeProcessRunner.run(
+                process,
+                startupTimeout: executable.lastPathComponent == "yt-dlp" ? 120 : nil,
+                isCancelled: { taskID.map { self.isCancelled(taskID: $0) } ?? false },
+                onStdoutLine: { line in
+                    let clean = self.sanitizeConsoleLine(line)
+                    if clean.hasPrefix("[") && !clean.hasPrefix("[download]") {
+                        self.diagnostics.log(.info, "Runtime output; task=\(taskID?.uuidString ?? "-") \(self.truncated(clean, max: 1000))")
+                    }
+                    onStdoutLine?(clean)
+                },
+                onStderrLine: { line in
+                    let clean = self.sanitizeConsoleLine(line)
+                    // Keep extraction/startup errors visible before the process exits.
+                    if !clean.contains("__L2D_PROGRESS__:") {
+                        self.diagnostics.log(.info, "Runtime output; task=\(taskID?.uuidString ?? "-") \(self.truncated(clean, max: 1000))")
+                    }
+                    onStderrLine?(clean)
+                }
+            )
         } catch {
-            unregister(taskID: taskID)
-            stdoutPipe.fileHandleForReading.readabilityHandler = nil
-            stderrPipe.fileHandleForReading.readabilityHandler = nil
+            if let taskID { clearCancellation(taskID: taskID) }
+            diagnostics.log(.error, "Process stopped; task=\(taskID?.uuidString ?? "-") exec=\(executable.lastPathComponent) error=\(error.localizedDescription)")
             throw error
         }
-
-        process.waitUntilExit()
-
-        stdoutPipe.fileHandleForReading.readabilityHandler = nil
-        stderrPipe.fileHandleForReading.readabilityHandler = nil
-        unregister(taskID: taskID)
-
-        let trailingOut = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-        let trailingErr = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-
-        stdoutData.append(trailingOut)
-        stderrData.append(trailingErr)
-
-        if let outTail = String(data: trailingOut, encoding: .utf8), !outTail.isEmpty {
-            stdoutRemainder += outTail
-        }
-        if let errTail = String(data: trailingErr, encoding: .utf8), !errTail.isEmpty {
-            stderrRemainder += errTail
-        }
-
-        let stdoutTail = sanitizeConsoleLine(stdoutRemainder)
-        if !stdoutTail.isEmpty {
-            onStdoutLine?(stdoutTail)
-        }
-        let stderrTail = sanitizeConsoleLine(stderrRemainder)
-        if !stderrTail.isEmpty {
-            onStderrLine?(stderrTail)
-        }
-
-        if let taskID, isCancelled(taskID: taskID) {
-            clearCancellation(taskID: taskID)
-            throw DownloadError.cancelled
-        }
-
-        let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
-        let stderr = String(data: stderrData, encoding: .utf8) ?? ""
+        let stdout = result.stdout
+        let stderr = result.stderr
         let elapsed = Date().timeIntervalSince(startedAt)
         if process.terminationStatus == 0 {
             diagnostics.log(

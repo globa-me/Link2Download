@@ -25,12 +25,13 @@ require_universal_binary() {
 }
 
 require_universal_binary "$APP_PATH/Contents/MacOS/Link2Download" "Link2Download"
-for tool_name in yt-dlp ffmpeg ffprobe; do
+for tool_name in yt-dlp ffmpeg ffprobe deno; do
   require_universal_binary "$APP_PATH/Contents/Resources/bin/$tool_name" "$tool_name"
 done
 
 for arch_name in arm64 x86_64; do
   arch "-$arch_name" "$APP_PATH/Contents/Resources/bin/yt-dlp" --version
+  arch "-$arch_name" "$APP_PATH/Contents/Resources/bin/deno" --version
   arch "-$arch_name" "$APP_PATH/Contents/Resources/bin/ffmpeg" -version 2>&1 | sed -n '1p'
   arch "-$arch_name" "$APP_PATH/Contents/Resources/bin/ffprobe" -version 2>&1 | sed -n '1p'
 done

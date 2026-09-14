@@ -4,13 +4,31 @@
 
 <h1 align="center">Link2Download</h1>
 
-<p align="center">Native desktop downloader for macOS and Windows, powered by <code>yt-dlp</code>.</p>
+<p align="center">A native desktop app for downloading video and audio with <code>yt-dlp</code>.</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-12%2B-111111?logo=apple" alt="macOS 12 or newer">
   <img src="https://img.shields.io/badge/Windows-.NET%208-512BD4?logo=dotnet" alt="Windows with .NET 8">
-  <img src="https://img.shields.io/badge/release-v1.4.1-0875E1" alt="Release 1.4.1">
+  <a href="https://github.com/globa-me/Link2Download/releases/latest"><img src="https://img.shields.io/github/v/release/globa-me/Link2Download?display_name=tag&label=release&color=0875E1" alt="Latest release"></a>
+  <a href="https://github.com/globa-me/Link2Download/actions/workflows/ci.yml"><img src="https://github.com/globa-me/Link2Download/actions/workflows/ci.yml/badge.svg" alt="Build status"></a>
 </p>
+
+## Platform status
+
+| Platform | Status | Download |
+| --- | --- | --- |
+| macOS 12+ | Stable | [Latest DMG](https://github.com/globa-me/Link2Download/releases/latest/download/Link2Download-Installer.dmg) |
+| Windows 11 | Preview source code | See [Windows setup](windows/README.md) |
+
+The macOS app is ready for everyday use. The Windows WPF port is under active development and does not yet have a supported public installer.
+
+## Highlights
+
+- Download video or audio with quality, format, subtitle and speed controls.
+- Keep searchable history and retry failed or cancelled downloads in place.
+- Reveal completed files, reopen sources and manage downloads without leaving the app.
+- Use browser cookies when a site requires an authenticated session.
+- Run in English, Russian, Hindi or Chinese.
 
 ## Screenshots
 
@@ -115,9 +133,27 @@ Building from source avoids the downloaded-app approval prompt in the normal cas
 
 Build outputs are kept in `build/` and are not committed to Git. To rebuild after updating the source, run `git pull`, then repeat steps 4–6.
 
+## macOS regression checks
+
+```bash
+./scripts/test_retry_history.sh
+./scripts/test_runtime_process.sh
+TEST_ARCH=x86_64 YTDLP_BIN="$PWD/build/macos-x86_64/Link2Download.app/Contents/Resources/bin/yt-dlp" ./scripts/test_youtube_runtime.sh
+```
+
+The network smoke test uses a clean environment and temporary home directory, without Homebrew, browser cookies or cached JavaScript. See [Intel fix handoff](docs/intel-runtime-fix.md) for findings and verification limits.
+
 ## Developer ID releases
 
 The signed/notarized release workflow and credential setup are documented in [docs/macos-release.md](docs/macos-release.md). The public download instructions above still describe the existing unsigned-by-Developer-ID release; update them only after a notarized replacement is published.
+
+Version 1.4.4 can be built as two separately signed applications for Apple Silicon and Intel:
+
+```bash
+SIGNING_IDENTITY='Developer ID Application: Gennadiy Zakharov (BN3D9H4C7J)' ./scripts/build_signed_macos_variants.sh
+```
+
+This creates architecture-specific apps and ZIP archives under `build/`. The apps inside the archives are Developer ID signed but must still be notarized before they are published as public downloads.
 
 ## Current macOS features
 
@@ -137,7 +173,9 @@ The automatic runtime-tool download is the easiest option:
 ```
 
 - By default, it downloads both ARM64 and Intel static `ffmpeg`/`ffprobe` builds and combines them as Universal 2 binaries.
-- The official macOS `yt-dlp` binary is also checked for both architectures.
+- The official macOS `yt-dlp` onedir distribution includes its complete `_internal` Python runtime; keep this directory next to `yt-dlp`.
+- Deno is bundled and passed explicitly to yt-dlp for YouTube JavaScript challenges; no Homebrew installation is needed.
+- All four runtime executables are checked for the target architectures.
 - To make a smaller architecture-specific local build, run both scripts with the same override, for example `TARGET_ARCH=arm64` or `TARGET_ARCH=x86_64`.
 
 If you already have compatible tools installed locally, embed them instead:
@@ -149,13 +187,17 @@ If you already have compatible tools installed locally, embed them instead:
 Optional overrides:
 
 ```bash
-YTDLP_BIN=/abs/path/yt-dlp FFMPEG_BIN=/abs/path/ffmpeg FFPROBE_BIN=/abs/path/ffprobe ./scripts/prepare_embedded_tools.sh
+YTDLP_BIN=/abs/path/yt-dlp FFMPEG_BIN=/abs/path/ffmpeg FFPROBE_BIN=/abs/path/ffprobe DENO_BIN=/abs/path/deno ./scripts/prepare_embedded_tools.sh
 ```
 
 Build outputs:
 
 - `build/Link2Download.app`
 - `build/Link2Download-Installer.dmg`
+- `build/macos-arm64/Link2Download.app`
+- `build/macos-x86_64/Link2Download.app`
+- `build/Link2Download-1.4.4-macOS-Apple-Silicon.zip`
+- `build/Link2Download-1.4.4-macOS-Intel.zip`
 - `build/Enable_Link2Download.command`
 
 ## Windows port
@@ -169,6 +211,19 @@ The native Windows implementation lives under `windows/` and uses `.NET 8` + `WP
 
 The current Windows code includes a strict single-download queue, persisted settings/history, runtime integration, diagnostics that redact URL secrets, and browser-cookie access disabled by default. The standalone Windows package remains a preview release until it is rebuilt with the current runtime tools on Windows.
 
+## Privacy and responsible use
+
+Link2Download runs locally. URLs, settings and download history are stored on the device; browser cookies are used only when the user enables a cookie source. Diagnostic logs redact URL query strings and fragments.
+
+Site support follows the upstream [yt-dlp supported-sites list](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md) and can change as websites evolve. Download only content you are allowed to access and save.
+
+## Contributing and support
+
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a change.
+- Open a [bug report](https://github.com/globa-me/Link2Download/issues/new) with the platform, app version and reproducible steps.
+- Report security issues privately as described in [SECURITY.md](SECURITY.md).
+- Browse the documentation index in [docs/README.md](docs/README.md).
+
 ## Project structure
 
 - `Sources/` — macOS app source code
@@ -178,7 +233,3 @@ The current Windows code includes a strict single-download queue, persisted sett
 - `docs/windows-port-plan.md` — Windows migration plan and feature map
 - `windows/` — Windows app source, runtime layout, and handoff documentation
 - `build/` — generated local artifacts (ignored by Git)
-
-## Important legal note
-
-Use the app only in compliance with platform terms, local law, and content rights.

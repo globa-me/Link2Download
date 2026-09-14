@@ -28,13 +28,13 @@ final class DownloadManager: ObservableObject {
     private let historyPersistenceQueue = DispatchQueue(label: "Link2Download.DownloadManager.history", qos: .utility)
     private var pendingHistoryPersistWorkItem: DispatchWorkItem?
 
-    init(settings: SettingsStore, service: YTDLPService = YTDLPService()) {
+    init(settings: SettingsStore, service: YTDLPService = YTDLPService(), historyDirectory: URL? = nil) {
         self.settings = settings
         self.service = service
 
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory())
-        let appSupport = support.appendingPathComponent("Link2Download", isDirectory: true)
+        let appSupport = historyDirectory ?? support.appendingPathComponent("Link2Download", isDirectory: true)
         try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
         self.historyFileURL = appSupport.appendingPathComponent("history.json")
         self.thumbnailsDirectoryURL = appSupport.appendingPathComponent("thumbnails", isDirectory: true)
@@ -70,6 +70,10 @@ final class DownloadManager: ObservableObject {
     }
 
     func enqueue(urlString: String) {
+        enqueue(urlString: urlString, retryRecordID: nil)
+    }
+
+    private func enqueue(urlString: String, retryRecordID: UUID?) {
         let cleanURL = service.normalize(urlString: urlString)
         guard service.validate(urlString: cleanURL) else {
             toastMessage = settings.t("toast.invalidURL")
@@ -83,7 +87,9 @@ final class DownloadManager: ObservableObject {
 
         if let existingIndex = records.firstIndex(where: {
             $0.sourceURL == cleanURL &&
-            ($0.status == .queued || $0.status == .downloading) &&
+            ($0.status == .queued || $0.status == .downloading ||
+             $0.id == activeDownloadID || $0.id == activeTranscodeID) &&
+            $0.operationType != .transcodeCopy &&
             $0.kind == profile.kind &&
             $0.qualityLabel == qualityLabel &&
             $0.outputFormat == formatLabel
@@ -98,23 +104,44 @@ final class DownloadManager: ObservableObject {
         let preferences = settings.snapshot()
         let serviceName = service.inferServiceName(from: cleanURL)
 
+        // Retry reuses the selected row; pasting a matching failed/cancelled URL
+        // also reuses history instead of accumulating failed attempts.
+        let reusableIndex = retryRecordID.flatMap { id in
+            records.firstIndex { $0.id == id }
+        } ?? records.firstIndex {
+            $0.sourceURL == cleanURL &&
+            ($0.status == .failed || $0.status == .cancelled) &&
+            $0.operationType != .transcodeCopy &&
+            $0.kind == profile.kind &&
+            $0.qualityLabel == qualityLabel &&
+            $0.outputFormat == formatLabel
+        }
+        let previousRecord = reusableIndex.map { records[$0] }
         let record = DownloadRecord(
+            id: previousRecord?.id ?? UUID(),
             sourceURL: cleanURL,
             serviceName: serviceName,
-            title: cleanURL,
-            durationSeconds: nil,
+            title: previousRecord?.title ?? cleanURL,
+            durationSeconds: previousRecord?.durationSeconds,
             status: .queued,
             progress: 0,
             downloadProgress: 0.0,
             processingProgress: nil,
             statusMessage: settings.t("row.status.queued"),
+            createdAt: previousRecord?.createdAt ?? Date(),
             kind: profile.kind,
             qualityLabel: qualityLabel,
             outputFormat: formatLabel,
+            uploaderName: previousRecord?.uploaderName,
+            thumbnailPath: previousRecord?.thumbnailPath,
             processingStage: nil
         )
 
-        records.append(record)
+        if let reusableIndex {
+            records[reusableIndex] = record
+        } else {
+            records.append(record)
+        }
         diagnostics.log(
             .info,
             "Enqueued download; id=\(record.id.uuidString) kind=\(profile.kind.rawValue) quality=\(profile.quality.rawValue) format=\(formatLabel) smart=\(preferences.smartModeEnabled)"
@@ -205,16 +232,24 @@ final class DownloadManager: ObservableObject {
 
     func retry(recordID: UUID) {
         guard let record = records.first(where: { $0.id == recordID }) else { return }
-        if let sourcePath = record.transcodeSourcePath,
-           FileManager.default.fileExists(atPath: sourcePath) {
-            if record.operationType == .transcodeCopy {
-                enqueueTranscodeCopy(sourceRecord: record, sourcePath: sourcePath)
-            } else {
-                enqueueExistingTranscode(recordID: record.id, sourcePath: sourcePath, sourceURL: record.sourceURL)
-            }
+        guard record.status == .failed || record.status == .cancelled else { return }
+        // Cancellation updates the row before the old worker has fully stopped.
+        // Reusing its ID before then lets late completion overwrite the retry.
+        guard activeDownloadID != recordID, activeTranscodeID != recordID else {
+            toastMessage = settings.t("toast.alreadyQueued")
             return
         }
-        enqueue(urlString: record.sourceURL)
+        if let sourcePath = record.transcodeSourcePath,
+           FileManager.default.fileExists(atPath: sourcePath) {
+            enqueueExistingTranscode(
+                recordID: record.id,
+                sourcePath: sourcePath,
+                sourceURL: record.sourceURL,
+                replaceOriginal: record.operationType != .transcodeCopy
+            )
+            return
+        }
+        enqueue(urlString: record.sourceURL, retryRecordID: record.id)
     }
 
     func retryFailedAndCancelled() {
@@ -418,7 +453,7 @@ final class DownloadManager: ObservableObject {
         startNextTranscodeIfNeeded()
     }
 
-    private func enqueueExistingTranscode(recordID: UUID, sourcePath: String, sourceURL: String) {
+    private func enqueueExistingTranscode(recordID: UUID, sourcePath: String, sourceURL: String, replaceOriginal: Bool = true) {
         guard let index = records.firstIndex(where: { $0.id == recordID }) else { return }
         if activeTranscodeID == recordID || transcodeQueue.contains(where: { $0.recordID == recordID }) {
             toastMessage = settings.t("toast.alreadyQueued")
@@ -428,7 +463,18 @@ final class DownloadManager: ObservableObject {
         let preferences = settings.snapshot()
         updateRecord(recordID) { record in
             record.status = .queued
+            record.statusMessage = settings.t("row.status.queued")
             record.errorMessage = nil
+            if !replaceOriginal {
+                record.progress = 0
+                record.downloadProgress = nil
+                record.filePath = nil
+                record.fileSizeBytes = nil
+                record.downloadedBytes = nil
+                record.totalBytes = nil
+                record.averageSpeedBytesPerSecond = nil
+                record.transcodedVideoBitrateBps = nil
+            }
             record.processingStage = .remuxing
             record.processingProgress = 0.0
             record.transcodeSourcePath = sourcePath
@@ -445,7 +491,7 @@ final class DownloadManager: ObservableObject {
                 sourcePath: sourcePath,
                 sourceURL: sourceURL,
                 preferences: preferences,
-                replaceOriginal: true
+                replaceOriginal: replaceOriginal
             )
         )
         refreshQueuedStatuses()

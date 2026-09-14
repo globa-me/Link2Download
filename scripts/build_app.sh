@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD_DIR="$ROOT_DIR/build"
+BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/build}"
+RUNTIME_BIN_DIR="${RUNTIME_BIN_DIR:-$ROOT_DIR/Resources/bin}"
 APP_NAME="Link2Download"
 APP_BUNDLE="$APP_NAME.app"
 APP_PATH="$BUILD_DIR/$APP_BUNDLE"
@@ -13,7 +14,7 @@ FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
 MODULE_CACHE_DIR="$BUILD_DIR/module-cache"
 MIN_MACOS_VERSION="${MIN_MACOS_VERSION:-12.0}"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
-APP_VERSION="${APP_VERSION:-1.4.2}"
+APP_VERSION="${APP_VERSION:-1.4.4}"
 APP_BUILD="${APP_BUILD:-$(date +%d%m%y)}"
 SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
 TARGET_ARCH="${TARGET_ARCH:-universal2}"
@@ -64,14 +65,21 @@ fi
 mv "$APP_BIN" "$MACOS_DIR/$APP_NAME"
 chmod +x "$MACOS_DIR/$APP_NAME"
 
-if [[ -d "$ROOT_DIR/Resources/bin" ]]; then
-  for tool_name in ffmpeg ffprobe yt-dlp; do
-    tool_path="$ROOT_DIR/Resources/bin/$tool_name"
-    [[ -x "$tool_path" ]] || continue
+if [[ ! -d "$RUNTIME_BIN_DIR/_internal" ]]; then
+  echo "Missing yt-dlp onedir runtime. Run TARGET_ARCH=$TARGET_ARCH ./scripts/fetch_runtime_tools.sh." >&2
+  exit 1
+fi
+if [[ -d "$RUNTIME_BIN_DIR" ]]; then
+  for tool_name in ffmpeg ffprobe yt-dlp deno; do
+    tool_path="$RUNTIME_BIN_DIR/$tool_name"
+    if [[ ! -x "$tool_path" ]]; then
+      echo "Missing runtime tool: $tool_path. Run TARGET_ARCH=$TARGET_ARCH ./scripts/fetch_runtime_tools.sh." >&2
+      exit 1
+    fi
     tool_archs="$(lipo -archs "$tool_path" 2>/dev/null || true)"
     for arch in "${TARGET_ARCHS[@]}"; do
       if [[ " $tool_archs " != *" $arch "* ]]; then
-        echo "Error: Resources/bin/$tool_name does not support $arch, which is required for $TARGET_ARCH."
+        echo "Error: $RUNTIME_BIN_DIR/$tool_name does not support $arch, which is required for $TARGET_ARCH."
         echo "Run TARGET_ARCH=$TARGET_ARCH ./scripts/fetch_runtime_tools.sh and rebuild."
         exit 1
       fi
@@ -79,7 +87,7 @@ if [[ -d "$ROOT_DIR/Resources/bin" ]]; then
   done
 
   mkdir -p "$RESOURCES_DIR/bin"
-  cp -R "$ROOT_DIR/Resources/bin/." "$RESOURCES_DIR/bin/"
+  cp -R "$RUNTIME_BIN_DIR/." "$RESOURCES_DIR/bin/"
   if compgen -G "$RESOURCES_DIR/bin/*" > /dev/null; then
     chmod +x "$RESOURCES_DIR/bin"/* || true
   fi
@@ -124,23 +132,28 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 </plist>
 PLIST
 
-if [[ "$SIGNING_IDENTITY" == "-" ]]; then
-  codesign --force --deep --sign - "$APP_PATH" >/dev/null 2>&1 || true
-else
-  # Resources/bin is not a standard nested-code location: sign tools explicitly.
-  while IFS= read -r -d '' binary; do
-    if file "$binary" | grep -q 'Mach-O'; then
-      if [[ "$(basename "$binary")" == "yt-dlp" ]]; then
-        # The upstream PyInstaller executable extracts ad-hoc signed Python libraries.
-        codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" --entitlements "$ROOT_DIR/Resources/yt-dlp.entitlements" "$binary"
-      else
-        codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$binary"
-      fi
-    fi
-  done < <(find "$RESOURCES_DIR" "$FRAMEWORKS_DIR" -type f -print0)
-  codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$APP_PATH"
-  codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+# Sign from the inside out, including the onedir Python libraries. Deno/V8
+# requires JIT permission when the release enables hardened runtime.
+sign_options=(--force --sign "$SIGNING_IDENTITY")
+if [[ "$SIGNING_IDENTITY" != "-" ]]; then
+  sign_options+=(--options runtime --timestamp)
 fi
+while IFS= read -r -d '' binary; do
+  if file "$binary" | grep -q 'Mach-O'; then
+    if [[ "$(basename "$binary")" == "deno" ]]; then
+      codesign "${sign_options[@]}" --entitlements "$ROOT_DIR/Resources/deno.entitlements" "$binary"
+    elif [[ "$(basename "$binary")" == "yt-dlp" ]]; then
+      codesign "${sign_options[@]}" --entitlements "$ROOT_DIR/Resources/yt-dlp.entitlements" "$binary"
+    else
+      codesign "${sign_options[@]}" "$binary"
+    fi
+  fi
+done < <(find "$RESOURCES_DIR" "$FRAMEWORKS_DIR" -type f -print0)
+while IFS= read -r -d '' framework; do
+  codesign "${sign_options[@]}" "$framework"
+done < <(find "$RESOURCES_DIR" "$FRAMEWORKS_DIR" -depth -type d -name '*.framework' -print0)
+codesign "${sign_options[@]}" "$APP_PATH"
+codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
 echo "Built app: $APP_PATH"
 echo "App architectures: $(lipo -archs "$MACOS_DIR/$APP_NAME")"

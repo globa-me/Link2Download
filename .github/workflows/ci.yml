@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS checks
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate shell scripts
+        run: bash -n scripts/*.sh
+      - name: Test retry and history behavior
+        run: ./scripts/test_retry_history.sh
+      - name: Test runtime process handling
+        run: ./scripts/test_runtime_process.sh
+
+  windows:
+    name: Windows tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Restore
+        run: dotnet restore .\windows\Link2Download.Windows.sln
+      - name: Test
+        run: dotnet test .\windows\Link2Download.Windows.sln --no-restore --configuration Release

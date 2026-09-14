@@ -71,25 +71,16 @@ struct MainView: View {
     }
 
     private func header(layout: MainWindowLayout) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
                 pasteButton
-
-                if layout != .narrow {
-                    smartModeToggle
-                }
+                smartModeToggle
 
                 Spacer(minLength: 0)
                 toolbarSettingsButtons
             }
 
-            if layout == .narrow {
-                smartModeToggle
-            }
-
-            if settings.smartModeEnabled {
-                smartModeSummary
-            } else {
+            if !settings.smartModeEnabled {
                 toolbarPickers
             }
 
@@ -110,12 +101,8 @@ struct MainView: View {
                     }
                 }
             }
-
-            Text(settings.t("toolbar.startHint"))
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.secondaryText)
         }
-        .padding(14)
+        .padding(12)
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.ultraThinMaterial))
     }
 
@@ -408,34 +395,6 @@ struct MainView: View {
             settings.resetDefaults()
         }
         .buttonStyle(.link)
-    }
-
-    private var smartModeSummary: some View {
-        HStack(alignment: .top, spacing: 9) {
-            Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Theme.accentStrong)
-                .padding(.top, 1)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(settings.t("smart.enabled"))
-                    .font(.system(size: 12, weight: .semibold))
-
-                Text(settings.appleTranscodeEnabled ? settings.t("smart.profileHint") : settings.t("smart.profileHintNoTranscode"))
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.secondaryText)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Theme.accent.opacity(0.10))
-        )
     }
 
     private var filterPicker: some View {
@@ -735,6 +694,13 @@ struct DownloadRowView: View {
                     systemImage: "play.circle.fill",
                     emphasized: true,
                     action: onOpenFile
+                )
+
+                rowActionButton(
+                    title: settings.t("action.showFinder"),
+                    systemImage: "folder.fill",
+                    emphasized: true,
+                    action: onShowFinder
                 )
             }
 

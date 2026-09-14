@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.4.4 — 2026-09-11
+
+### macOS
+
+- Bundle the official yt-dlp onedir Python runtime to avoid repeated one-file extraction and library validation at startup.
+- Bundle Deno for Intel and Apple Silicon; remove the unsupported forced YouTube client and resolve JavaScript challenges without Homebrew.
+- Show preparation output, bound silent runtime startup and network waits, and make cancellation/output collection robust.
+- Retry failed/cancelled downloads in the same history row; pasting the same link reuses a matching failed/cancelled row.
+- Add isolated retry/process regression checks and a YouTube smoke test without developer-machine dependencies.
+
+## 1.4.3 — 2026-09-10
+
+### macOS
+
+- Reduced the Smart mode header to the controls and save-location row so download history gets more vertical space.
+- Added a prominent Show in Finder button beside Open File for completed downloads.
+- Added separate Developer ID signed Apple Silicon and Intel build artifacts instead of one combined Universal 2 app.
+
 ## 1.4.2 — 2026-09-09
 
 ### macOS
