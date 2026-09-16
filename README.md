@@ -13,6 +13,16 @@
   <a href="https://github.com/globa-me/Link2Download/actions/workflows/ci.yml"><img src="https://github.com/globa-me/Link2Download/actions/workflows/ci.yml/badge.svg" alt="Build status"></a>
 </p>
 
+<p align="center">
+  <strong>Support independent GZ Apps development</strong><br>
+  Get ready-to-run builds, updates, and member posts while helping me improve this project.
+</p>
+
+<p align="center">
+  <a href="https://www.patreon.com/c/globa_me"><img alt="Support on Patreon" src="https://img.shields.io/badge/Support_on-Patreon-FF424D?style=for-the-badge&logo=patreon&logoColor=white"></a>
+  <a href="https://boosty.to/globa_me"><img alt="Support on Boosty" src="https://img.shields.io/badge/Support_on-Boosty-F15F2C?style=for-the-badge"></a>
+</p>
+
 ## Platform status
 
 | Platform | Status | Download |
