@@ -61,32 +61,18 @@ The macOS app is ready for everyday use. The Windows WPF port is under active de
 
 ## Download for macOS
 
-Current stable version: **1.4.1**.
+Current stable version: **1.4.4**.
 
 - [Download Link2Download-Installer.dmg](https://github.com/globa-me/Link2Download/releases/latest/download/Link2Download-Installer.dmg)
-- [Download the optional unblock helper](https://github.com/globa-me/Link2Download/releases/latest/download/Enable_Link2Download.command)
 - [View release notes](CHANGELOG.md)
 
-The app is ad-hoc signed but is **not notarized with an Apple Developer ID**. macOS may ask you to approve it once. This is expected for this release.
+The app is signed with a Developer ID certificate and notarized by Apple. The installer is Universal 2 and supports Apple Silicon and 64-bit Intel Macs.
 
 ### Install and open the downloaded app
 
 1. Open the downloaded `Link2Download-Installer.dmg`.
 2. Drag `Link2Download.app` to the `Applications` shortcut in the installer window.
-3. Eject the installer and open **Applications → Link2Download** once. If macOS blocks it, choose **Done** in the warning.
-4. Open **System Settings → Privacy & Security**, scroll to the security message for Link2Download, and click **Open Anyway**.
-5. Confirm with your Mac password or Touch ID, then click **Open**.
-
-You only need to approve this copy of the app once. There is no need to lower the global “Allow applications from” security setting.
-
-If **Open Anyway** is not shown, run `Enable_Link2Download.command` from the mounted installer (or the separate download) and enter your administrator password when requested. The helper copies the app to `/Applications` when needed, removes its quarantine attribute, adds a local Gatekeeper rule, and launches it. Use the helper only when it came from this repository’s [GitHub Releases](https://github.com/globa-me/Link2Download/releases).
-
-Advanced fallback, when the app is already in `/Applications`:
-
-```bash
-sudo xattr -dr com.apple.quarantine /Applications/Link2Download.app
-open /Applications/Link2Download.app
-```
+3. Eject the installer and open **Applications → Link2Download**.
 
 ## Build it yourself on a Mac
 
@@ -155,7 +141,7 @@ The network smoke test uses a clean environment and temporary home directory, wi
 
 ## Developer ID releases
 
-The signed/notarized release workflow and credential setup are documented in [docs/macos-release.md](docs/macos-release.md). The public download instructions above still describe the existing unsigned-by-Developer-ID release; update them only after a notarized replacement is published.
+The signed and notarized release workflow is documented in [docs/macos-release.md](docs/macos-release.md).
 
 Version 1.4.4 can be built as two separately signed applications for Apple Silicon and Intel:
 

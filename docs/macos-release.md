@@ -2,6 +2,12 @@
 
 This document describes the current Developer ID release process. Version-specific changes belong in [CHANGELOG.md](../CHANGELOG.md); runtime investigation notes are in [intel-runtime-fix.md](intel-runtime-fix.md).
 
+## Current release verification
+
+Version 1.4.4 was built from commit `af065a3` as a Universal 2 app on 2026-09-19. The app and DMG were accepted by Apple notarization, stapled, validated and accepted by Gatekeeper. Isolated YouTube smoke downloads passed through both the native Apple Silicon runtime and the Intel runtime under Rosetta.
+
+Release DMG SHA-256: `0f47479d91d5f95ce2eedb2b08f7266012b8ac107c2b258ce9761ef3bcd54c95`.
+
 ## Requirements
 
 - A macOS machine with Xcode Command Line Tools.
