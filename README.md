@@ -61,7 +61,7 @@ The macOS app is ready for everyday use. The Windows WPF port is under active de
 
 ## Download for macOS
 
-Current stable version: **1.4.4**.
+Current stable version: **1.4.5**.
 
 - [Download Link2Download-Installer.dmg](https://github.com/globa-me/Link2Download/releases/latest/download/Link2Download-Installer.dmg)
 - [View release notes](CHANGELOG.md)
@@ -134,6 +134,7 @@ Build outputs are kept in `build/` and are not committed to Git. To rebuild afte
 ```bash
 ./scripts/test_retry_history.sh
 ./scripts/test_runtime_process.sh
+./scripts/test_process_error_message.sh
 TEST_ARCH=x86_64 YTDLP_BIN="$PWD/build/macos-x86_64/Link2Download.app/Contents/Resources/bin/yt-dlp" ./scripts/test_youtube_runtime.sh
 ```
 
@@ -143,7 +144,7 @@ The network smoke test uses a clean environment and temporary home directory, wi
 
 The signed and notarized release workflow is documented in [docs/macos-release.md](docs/macos-release.md).
 
-Version 1.4.4 can be built as two separately signed applications for Apple Silicon and Intel:
+Version 1.4.5 can be built as two separately signed applications for Apple Silicon and Intel:
 
 ```bash
 SIGNING_IDENTITY='Developer ID Application: Gennadiy Zakharov (BN3D9H4C7J)' ./scripts/build_signed_macos_variants.sh
@@ -192,8 +193,8 @@ Build outputs:
 - `build/Link2Download-Installer.dmg`
 - `build/macos-arm64/Link2Download.app`
 - `build/macos-x86_64/Link2Download.app`
-- `build/Link2Download-1.4.4-macOS-Apple-Silicon.zip`
-- `build/Link2Download-1.4.4-macOS-Intel.zip`
+- `build/Link2Download-1.4.5-macOS-Apple-Silicon.zip`
+- `build/Link2Download-1.4.5-macOS-Intel.zip`
 - `build/Enable_Link2Download.command`
 
 ## Windows port

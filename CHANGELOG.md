@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.5 — 2026-09-24
+
+### macOS
+
+- Preserve the cause of yt-dlp errors containing carriage returns instead of showing only `ERROR:`.
+- Show a localized retry hint when a video server cannot be resolved through DNS.
+
+
 ## 1.4.4 — 2026-09-19
 
 ### macOS

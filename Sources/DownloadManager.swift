@@ -1279,6 +1279,10 @@ final class DownloadManager: ObservableObject {
             lower.contains("[vimeo]") &&
             (lower.contains("macos api json") || lower.contains("http error 404"))
 
+        if lower.contains("failed to resolve") || lower.contains("nodename nor servname provided") {
+            return settings.t("error.network.dnsHint")
+        }
+
         if isVimeoSource && hasVimeo404Pattern {
             return settings.t("error.vimeo.linkHint")
         }

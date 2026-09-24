@@ -105,7 +105,7 @@ final class YTDLPService: @unchecked Sendable {
 
         let result = try runProcess(executable: tools.ytdlp, arguments: args, taskID: taskID)
         guard result.exitCode == 0 else {
-            let message = cleanProcessErrorMessage(stderr: result.stderr, stdout: result.stdout)
+            let message = ProcessErrorMessage.clean(stderr: result.stderr, stdout: result.stdout)
             throw DownloadError.metadataFailed(message)
         }
 
@@ -402,7 +402,7 @@ final class YTDLPService: @unchecked Sendable {
         )
 
         guard result.exitCode == 0 else {
-            let message = cleanProcessErrorMessage(stderr: result.stderr, stdout: result.stdout)
+            let message = ProcessErrorMessage.clean(stderr: result.stderr, stdout: result.stdout)
             throw DownloadError.processFailed(message.isEmpty ? "yt-dlp failed" : message)
         }
 
@@ -498,7 +498,7 @@ final class YTDLPService: @unchecked Sendable {
 
         let result = try runProcess(executable: tools.ytdlp, arguments: args, taskID: taskID)
         guard result.exitCode == 0 else {
-            let message = cleanProcessErrorMessage(stderr: result.stderr, stdout: result.stdout)
+            let message = ProcessErrorMessage.clean(stderr: result.stderr, stdout: result.stdout)
             throw DownloadError.metadataFailed(message)
         }
 
@@ -1152,7 +1152,7 @@ final class YTDLPService: @unchecked Sendable {
         )
 
         guard result.exitCode == 0 else {
-            let message = cleanProcessErrorMessage(stderr: result.stderr, stdout: result.stdout)
+            let message = ProcessErrorMessage.clean(stderr: result.stderr, stdout: result.stdout)
             try? fileManager.removeItem(at: tempURL)
             throw DownloadError.processFailed(message.isEmpty ? "ffmpeg conversion failed" : message)
         }
@@ -1839,45 +1839,6 @@ final class YTDLPService: @unchecked Sendable {
         let parts = [executable.path] + arguments
         let rendered = parts.map(quotedArgument).joined(separator: " ")
         return truncated(rendered, max: 1200)
-    }
-
-    private func cleanProcessErrorMessage(stderr: String, stdout: String) -> String {
-        func isInternalProtocolLine(_ line: String) -> Bool {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.hasPrefix("__L2D_") ||
-                   trimmed.contains("__L2D_META__:") ||
-                   trimmed.contains("__L2D_ITEM__:") ||
-                   trimmed.contains("__L2D_PROGRESS__:") ||
-                   trimmed.contains("__L2D_FILE__:") ||
-                   trimmed.contains("__L2D_STATUS_")
-        }
-
-        let stderrLines = stderr
-            .split(whereSeparator: \.isNewline)
-            .map(String.init)
-            .map { sanitizeConsoleLine($0) }
-            .filter { !$0.isEmpty && !isInternalProtocolLine($0) }
-
-        let stdoutLines = stdout
-            .split(whereSeparator: \.isNewline)
-            .map(String.init)
-            .map { sanitizeConsoleLine($0) }
-            .filter { !$0.isEmpty && !isInternalProtocolLine($0) }
-
-        let errorLines = (stderrLines + stdoutLines).filter { $0.hasPrefix("ERROR:") || $0.contains("ERROR:") }
-        if !errorLines.isEmpty {
-            return errorLines.joined(separator: "\n")
-        }
-
-        if !stderrLines.isEmpty {
-            return stderrLines.joined(separator: "\n")
-        }
-
-        if !stdoutLines.isEmpty {
-            return stdoutLines.joined(separator: "\n")
-        }
-
-        return "yt-dlp failed"
     }
 
     private func sanitizeConsoleLine(_ raw: String) -> String {

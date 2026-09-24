@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_ROOT="$ROOT_DIR/build"
-APP_VERSION="${APP_VERSION:-1.4.4}"
+APP_VERSION="${APP_VERSION:-1.4.5}"
 APP_BUILD="${APP_BUILD:-$(date +%d%m%y)}"
 : "${SIGNING_IDENTITY:?Set SIGNING_IDENTITY to your Developer ID Application identity}"
 
