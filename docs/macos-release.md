@@ -4,7 +4,9 @@ This document describes the current Developer ID release process. Version-specif
 
 ## Current release verification
 
-Version 1.4.5 fixes diagnostic error parsing and adds a localized DNS hint. Its build and notarization verification is recorded in the 1.4.5 GitHub release.
+Version 1.4.5 was built from commit `0ea7fa9` as a Universal 2 app on 2026-09-24. The app and DMG were accepted by Apple notarization, stapled, validated and accepted by Gatekeeper. Isolated YouTube download and merge smoke tests passed for Apple Silicon and Intel under Rosetta. The app was installed and launched from `/Applications`.
+
+Release DMG SHA-256: `b2b100566535ca9d92bc8e37ed8ddb5af7ba8a9ca6a1ecd696c7af7180f2e3d0`.
 
 
 Version 1.4.4 was built from commit `af065a3` as a Universal 2 app on 2026-09-19. The app and DMG were accepted by Apple notarization, stapled, validated and accepted by Gatekeeper. Isolated YouTube smoke downloads passed through both the native Apple Silicon runtime and the Intel runtime under Rosetta.
