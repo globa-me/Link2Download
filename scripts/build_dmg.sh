@@ -29,7 +29,8 @@ if [[ ! -d "$APP_PATH" ]]; then
 fi
 
 if [[ "$RELEASE_DMG" == "1" ]]; then
-  : "${SIGNING_IDENTITY:?Set SIGNING_IDENTITY for a release DMG}"
+  "$ROOT_DIR/scripts/check_release_signing.sh" "$APP_PATH"
+  SIGNING_IDENTITY="$SIGNING_CERT_SHA1"
   codesign --verify --deep --strict "$APP_PATH"
   xcrun stapler validate "$APP_PATH"
 fi
@@ -223,6 +224,7 @@ rm -rf "$STAGING_DIR"
 if [[ "$RELEASE_DMG" == "1" ]]; then
   codesign --force --timestamp --sign "$SIGNING_IDENTITY" "$DMG_PATH"
   codesign --verify --strict "$DMG_PATH"
+  "$ROOT_DIR/scripts/check_release_signing.sh" "$DMG_PATH"
   echo "Created signed DMG (notarization still required): $DMG_PATH"
   exit 0
 fi

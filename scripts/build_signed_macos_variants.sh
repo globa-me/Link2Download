@@ -5,7 +5,9 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_ROOT="$ROOT_DIR/build"
 APP_VERSION="${APP_VERSION:-1.4.5}"
 APP_BUILD="${APP_BUILD:-$(date +%d%m%y)}"
-: "${SIGNING_IDENTITY:?Set SIGNING_IDENTITY to your Developer ID Application identity}"
+"$ROOT_DIR/scripts/check_release_signing.sh"
+SIGNING_IDENTITY="$SIGNING_CERT_SHA1"
+export SIGNING_IDENTITY
 
 require_thin_binary() {
   local binary="$1" expected_arch="$2" label="$3" archs
@@ -54,6 +56,7 @@ build_variant() {
   done
 
   codesign --verify --deep --strict "$app_path"
+  "$ROOT_DIR/scripts/check_release_signing.sh" "$app_path"
   signature_details="$(codesign -dvv "$app_path" 2>&1)"
   if [[ "$signature_details" != *"Authority=Developer ID Application:"* ]]; then
     echo "Developer ID Application signature is missing from $app_path" >&2

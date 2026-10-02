@@ -5,7 +5,8 @@ BUILD_DIR="$ROOT_DIR/build"
 APP_PATH="$BUILD_DIR/Link2Download.app"
 DMG_PATH="$BUILD_DIR/Link2Download-Installer.dmg"
 NOTARY_PROFILE="${NOTARY_PROFILE:-Link2Download}"
-: "${SIGNING_IDENTITY:?Set SIGNING_IDENTITY to your Developer ID Application identity}"
+"$ROOT_DIR/scripts/check_release_signing.sh"
+SIGNING_IDENTITY="$SIGNING_CERT_SHA1"
 export SIGNING_IDENTITY
 
 # Fail before replacing artifacts if credentials are unavailable.
@@ -25,6 +26,7 @@ require_universal_binary() {
 }
 
 require_universal_binary "$APP_PATH/Contents/MacOS/Link2Download" "Link2Download"
+"$ROOT_DIR/scripts/check_release_signing.sh" "$APP_PATH"
 for tool_name in yt-dlp ffmpeg ffprobe deno; do
   require_universal_binary "$APP_PATH/Contents/Resources/bin/$tool_name" "$tool_name"
 done
@@ -66,6 +68,7 @@ notarize "$DMG_PATH" dmg
 xcrun stapler staple "$DMG_PATH"
 xcrun stapler validate "$DMG_PATH"
 codesign --verify --strict "$DMG_PATH"
+"$ROOT_DIR/scripts/check_release_signing.sh" "$DMG_PATH"
 spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG_PATH"
 shasum -a 256 "$DMG_PATH" > "$DMG_PATH.sha256"
 echo "Ready for distribution: $DMG_PATH"

@@ -16,6 +16,10 @@ MIN_MACOS_VERSION="${MIN_MACOS_VERSION:-12.0}"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
 APP_VERSION="${APP_VERSION:-1.4.5}"
 APP_BUILD="${APP_BUILD:-$(date +%d%m%y)}"
+if [[ "$SIGNING_IDENTITY" != "-" || -n "${SIGNING_CERT_SHA1:-}" ]]; then
+  "$ROOT_DIR/scripts/check_release_signing.sh"
+  SIGNING_IDENTITY="$SIGNING_CERT_SHA1"
+fi
 SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
 TARGET_ARCH="${TARGET_ARCH:-universal2}"
 
@@ -154,6 +158,9 @@ while IFS= read -r -d '' framework; do
 done < <(find "$RESOURCES_DIR" "$FRAMEWORKS_DIR" -depth -type d -name '*.framework' -print0)
 codesign "${sign_options[@]}" "$APP_PATH"
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+if [[ "$SIGNING_IDENTITY" != "-" ]]; then
+  "$ROOT_DIR/scripts/check_release_signing.sh" "$APP_PATH"
+fi
 
 echo "Built app: $APP_PATH"
 echo "App architectures: $(lipo -archs "$MACOS_DIR/$APP_NAME")"

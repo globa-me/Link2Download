@@ -8,6 +8,7 @@
 ## Development and releases
 
 - [macOS release runbook](macos-release.md)
+- [Developer ID G2 migration and handoff](developer-id-g2-migration.md)
 - [Intel runtime fix and verification](intel-runtime-fix.md)
 - [Windows port plan](windows-port-plan.md)
 

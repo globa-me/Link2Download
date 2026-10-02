@@ -147,7 +147,7 @@ The signed and notarized release workflow is documented in [docs/macos-release.m
 Version 1.4.5 can be built as two separately signed applications for Apple Silicon and Intel:
 
 ```bash
-SIGNING_IDENTITY='Developer ID Application: Gennadiy Zakharov (BN3D9H4C7J)' ./scripts/build_signed_macos_variants.sh
+SIGNING_CERT_SHA1='<G2 leaf certificate SHA-1>' ./scripts/build_signed_macos_variants.sh
 ```
 
 This creates architecture-specific apps and ZIP archives under `build/`. The apps inside the archives are Developer ID signed but must still be notarized before they are published as public downloads.
