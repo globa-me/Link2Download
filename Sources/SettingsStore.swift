@@ -17,16 +17,17 @@ final class SettingsStore: ObservableObject {
     @Published var includeSubtitles: Bool
     @Published var includeAdditionalAudioTracks: Bool
 
+    private let defaults: UserDefaults
     private let defaultsKey = "link2download.preferences"
     private let cookieAutoMigrationKey = "link2download.preferences.cookiesAutoMigration.v1"
     private var cancellables = Set<AnyCancellable>()
     private var isProgrammaticSettingsUpdate = false
 
-    init() {
-        var loaded = SettingsStore.loadFromDefaults(key: defaultsKey) ?? .default()
-        let defaults = UserDefaults.standard
-        if !defaults.bool(forKey: cookieAutoMigrationKey), loaded.cookieSource == .none {
-            loaded.cookieSource = .auto
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        var loaded = SettingsStore.loadFromDefaults(key: defaultsKey, defaults: defaults) ?? .default()
+        if !defaults.bool(forKey: cookieAutoMigrationKey) {
+            if loaded.cookieSource == .none { loaded.cookieSource = .auto }
             defaults.set(true, forKey: cookieAutoMigrationKey)
         }
         self.language = loaded.language
@@ -50,6 +51,7 @@ final class SettingsStore: ObservableObject {
         ensureSaveDirectoryExists()
         bindPersistence()
         bindSmartModeAutoDisable()
+        persist()
     }
 
     func snapshot() -> DownloadPreferences {
@@ -71,7 +73,11 @@ final class SettingsStore: ObservableObject {
     }
 
     func resetDefaults() {
-        let defaults = DownloadPreferences.default()
+        apply(.default())
+    }
+
+    /// Apply one complete snapshot without Smart Mode observers changing its intent.
+    func apply(_ defaults: DownloadPreferences) {
         withProgrammaticSettingsUpdate {
             language = defaults.language
             smartModeEnabled = defaults.smartModeEnabled
@@ -116,7 +122,10 @@ final class SettingsStore: ObservableObject {
     }
 
     func resolveProfile(for urlString: String) -> ResolvedDownloadProfile {
-        let current = snapshot()
+        Self.resolveProfile(for: urlString, preferences: snapshot())
+    }
+
+    static func resolveProfile(for urlString: String, preferences current: DownloadPreferences) -> ResolvedDownloadProfile {
         let safeManualQuality: QualityPreset = current.quality == .smart ? .best : current.quality
         guard current.smartModeEnabled else {
             return ResolvedDownloadProfile(
@@ -290,7 +299,10 @@ final class SettingsStore: ObservableObject {
         )
             .sink { [weak self] _ in
                 guard let self else { return }
-                self.persist()
+                guard !self.isProgrammaticSettingsUpdate else { return }
+                // @Published emits before the property is assigned. Persist on the
+                // next main-actor turn so the snapshot contains the new value.
+                Task { @MainActor [weak self] in self?.persist() }
             }
             .store(in: &cancellables)
     }
@@ -319,11 +331,11 @@ final class SettingsStore: ObservableObject {
     private func persist() {
         ensureSaveDirectoryExists()
         guard let data = try? JSONEncoder().encode(snapshot()) else { return }
-        UserDefaults.standard.set(data, forKey: defaultsKey)
+        defaults.set(data, forKey: defaultsKey)
     }
 
-    private static func loadFromDefaults(key: String) -> DownloadPreferences? {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+    private static func loadFromDefaults(key: String, defaults: UserDefaults) -> DownloadPreferences? {
+        guard let data = defaults.data(forKey: key) else { return nil }
         return try? JSONDecoder().decode(DownloadPreferences.self, from: data)
     }
 
@@ -331,5 +343,6 @@ final class SettingsStore: ObservableObject {
         isProgrammaticSettingsUpdate = true
         body()
         isProgrammaticSettingsUpdate = false
+        persist()
     }
 }

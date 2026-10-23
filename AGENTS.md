@@ -4,6 +4,8 @@
 - This repository currently contains a macOS-only desktop app implemented in SwiftUI.
 - The shipping macOS source lives in `Sources/`.
 - macOS build and packaging scripts live in `scripts/`.
+- macOS CLI/MCP contracts and transport live in `Control/`; the native helper lives in `CLI/`.
+- Keep both app and helper compatible with macOS 12. The bundled helper is named `link2download-cli`: `link2download` would collide with `Link2Download` on case-insensitive APFS.
 - There is no shared cross-platform layer yet.
 
 ## Windows Port Target
@@ -14,6 +16,7 @@
 
 ## Read First
 - `README.md`
+- `docs/automation.md` (macOS CLI/MCP architecture, contracts, checks and verification limits)
 - `docs/windows-port-plan.md`
 - `windows/README.md`
 - `windows/CODEX_TASK.md`
@@ -27,6 +30,16 @@
 - `Sources/MainView.swift`: UI behavior reference only.
 - `Sources/BrowserCookieExporter.swift`: macOS-specific implementation; replace on Windows.
 - `Sources/AppDiagnostics.swift`: logging behavior and retention policy.
+- `Sources/AutomationController.swift`: CLI/MCP command routing into the app-owned manager and settings.
+- `Control/ControlCatalog.swift`: canonical command schemas shared by the app, CLI and MCP.
+- `Sources/Link2DownloadApp.swift`: AppKit lifecycle, background launch and single-owner lease; hosts the existing SwiftUI views.
+
+## macOS Automation Invariants
+- GUI, CLI and MCP share one app-owned `DownloadManager` and `SettingsStore`; clients must not write history/preferences directly.
+- There is one active download and one active transcode, which can run concurrently.
+- Original request preferences and current-attempt preferences have separate persisted identities. Preserve both when changing retry/deduplication.
+- Test with isolated UserDefaults/history/logs and a private control endpoint; see `docs/automation.md`.
+- Updating source on GitHub is separate from publishing a new binary release. Record actual signing/notarization and runtime results without claiming an unperformed macOS 12 runtime test.
 
 ## Windows Constraints
 - Keep the existing macOS app working. Do not break `Sources/` or `scripts/`.

@@ -50,7 +50,7 @@ for arch in "${TARGET_ARCHS[@]}"; do
     -target "${arch}-apple-macos${MIN_MACOS_VERSION}" \
     -sdk "$SDK_PATH" \
     -o "$arch_binary" \
-    "$ROOT_DIR"/Sources/*.swift \
+    "$ROOT_DIR"/Sources/*.swift "$ROOT_DIR"/Control/*.swift \
     -framework SwiftUI \
     -framework AppKit \
     -framework UniformTypeIdentifiers \
@@ -68,6 +68,9 @@ fi
 
 mv "$APP_BIN" "$MACOS_DIR/$APP_NAME"
 chmod +x "$MACOS_DIR/$APP_NAME"
+
+# APFS is usually case insensitive: Link2Download and link2download collide.
+"$ROOT_DIR/scripts/build_cli.sh" "$MACOS_DIR/link2download-cli"
 
 if [[ ! -d "$RUNTIME_BIN_DIR/_internal" ]]; then
   echo "Missing yt-dlp onedir runtime. Run TARGET_ARCH=$TARGET_ARCH ./scripts/fetch_runtime_tools.sh." >&2
@@ -142,6 +145,7 @@ sign_options=(--force --sign "$SIGNING_IDENTITY")
 if [[ "$SIGNING_IDENTITY" != "-" ]]; then
   sign_options+=(--options runtime --timestamp)
 fi
+codesign "${sign_options[@]}" "$MACOS_DIR/link2download-cli"
 while IFS= read -r -d '' binary; do
   if file "$binary" | grep -q 'Mach-O'; then
     if [[ "$(basename "$binary")" == "deno" ]]; then

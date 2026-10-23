@@ -188,7 +188,7 @@ enum DownloadProcessingStage: String, Codable {
     case softwareTranscode
 }
 
-struct DownloadPreferences: Codable {
+struct DownloadPreferences: Codable, Equatable {
     var language: AppLanguage
     var smartModeEnabled: Bool
     var appleTranscodeEnabled: Bool
@@ -299,11 +299,19 @@ struct DownloadRecord: Identifiable, Codable {
     var uploaderName: String?
     var thumbnailPath: String?
     var errorMessage: String?
+    var errorCode: String?
     var processingStage: DownloadProcessingStage?
     var operationType: DownloadOperationType?
     var transcodeSourcePath: String?
+    var transcodeSourceRecordID: UUID?
     var originalVideoBitrateBps: Int64?
     var transcodedVideoBitrateBps: Int64?
+    var operationID: UUID?
+    var requestID: String?
+    var requestedPreferences: DownloadPreferences?
+    var resolvedProfile: ResolvedDownloadProfile?
+    var attemptPreferences: DownloadPreferences?
+    var attemptProfile: ResolvedDownloadProfile?
 
     init(
         id: UUID = UUID(),
@@ -329,11 +337,19 @@ struct DownloadRecord: Identifiable, Codable {
         uploaderName: String? = nil,
         thumbnailPath: String? = nil,
         errorMessage: String? = nil,
+        errorCode: String? = nil,
         processingStage: DownloadProcessingStage? = nil,
         operationType: DownloadOperationType? = .download,
         transcodeSourcePath: String? = nil,
+        transcodeSourceRecordID: UUID? = nil,
         originalVideoBitrateBps: Int64? = nil,
-        transcodedVideoBitrateBps: Int64? = nil
+        transcodedVideoBitrateBps: Int64? = nil,
+        operationID: UUID? = nil,
+        requestID: String? = nil,
+        requestedPreferences: DownloadPreferences? = nil,
+        resolvedProfile: ResolvedDownloadProfile? = nil,
+        attemptPreferences: DownloadPreferences? = nil,
+        attemptProfile: ResolvedDownloadProfile? = nil
     ) {
         self.id = id
         self.sourceURL = sourceURL
@@ -358,11 +374,19 @@ struct DownloadRecord: Identifiable, Codable {
         self.uploaderName = uploaderName
         self.thumbnailPath = thumbnailPath
         self.errorMessage = errorMessage
+        self.errorCode = errorCode
         self.processingStage = processingStage
         self.operationType = operationType
         self.transcodeSourcePath = transcodeSourcePath
+        self.transcodeSourceRecordID = transcodeSourceRecordID
         self.originalVideoBitrateBps = originalVideoBitrateBps
         self.transcodedVideoBitrateBps = transcodedVideoBitrateBps
+        self.operationID = operationID
+        self.requestID = requestID
+        self.requestedPreferences = requestedPreferences
+        self.resolvedProfile = resolvedProfile
+        self.attemptPreferences = attemptPreferences
+        self.attemptProfile = attemptProfile
     }
 }
 
@@ -380,7 +404,7 @@ struct DownloadDiscoveredMetadata {
     let thumbnailURL: String?
 }
 
-struct ResolvedDownloadProfile {
+struct ResolvedDownloadProfile: Codable, Equatable {
     let kind: DownloadKind
     let videoFormat: VideoFormat
     let audioFormat: AudioFormat

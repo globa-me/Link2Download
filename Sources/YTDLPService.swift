@@ -373,13 +373,16 @@ final class YTDLPService: @unchecked Sendable {
 
                     let item = pendingItemData.isEmpty ? (nil, nil, nil, nil) : pendingItemData.removeFirst()
                     let fileSize = self.fileSizeInBytes(atPath: rawPath)
+                    // before_dl describes the source container; audio extraction
+                    // and remuxing can change it before after_move reports the file.
+                    let savedExtension = URL(fileURLWithPath: rawPath).pathExtension
                     completedFiles.append(
                         CompletedFile(
                             path: rawPath,
                             title: item.0,
-                            ext: item.2,
+                            ext: savedExtension.isEmpty ? item.2 : savedExtension,
                             durationSeconds: item.1,
-                            resolution: item.3,
+                            resolution: profile.kind == .video ? item.3 : nil,
                             fileSizeBytes: fileSize,
                             originalVideoBitrateBps: nil,
                             transcodedVideoBitrateBps: nil

@@ -4,6 +4,38 @@ This document describes the current Developer ID release process. Version-specif
 
 ## Current release verification
 
+### Local automation preview — 2026-10-23
+
+The CLI/MCP implementation has a locally verified Universal 2 preview at `build/Link2Download-Automation-Preview-macOS.zip`. This is not a new GitHub binary release; the public stable release remains 1.4.5. The preview retains app version 1.4.5 with build 231026.
+
+- App and `Contents/MacOS/link2download-cli` are signed with G2 identity `6E99F92E9A1BA1273CD084FAFE940A7280DB0A30`, team `BN3D9H4C7J`, Hardened Runtime and secure timestamps.
+- Apple notarization using Keychain profile `GZB-notary`: **Accepted**, submission `ea22b552-8fae-49a4-b0be-bb2c3fb6d75a`.
+- The ticket was stapled and validated, the signature verified, and Gatekeeper accepted the app as `Notarized Developer ID`. The final ZIP was recreated after stapling and its extracted app rechecked.
+- Final ZIP SHA-256: `2555e5992ed0544e7c5b79bf1ea07724bab9a183afeff1f57645a364fe6d299e`.
+- All 109 bundled Mach-O images declare minimum OS versions <= macOS 12.0. Live CLI/MCP video, M4A, Apple MOV, shutdown/restart and official SDK checks passed on ARM64 and Intel under Rosetta on macOS 26.7.1. Actual macOS 12 and physical Intel remain untested. See [automation verification](automation.md#verification-on-2026-10-23).
+
+Reproduce the preview with the normal signed build, then submit the app ZIP with the known profile:
+
+```bash
+SIGNING_CERT_SHA1=6E99F92E9A1BA1273CD084FAFE940A7280DB0A30 \
+  MIN_MACOS_VERSION=12.0 TARGET_ARCH=universal2 ./scripts/build_app.sh
+python3 scripts/check_macos_compatibility.py build/Link2Download.app
+ditto -c -k --sequesterRsrc --keepParent build/Link2Download.app build/Link2Download-automation-submission.zip
+xcrun notarytool submit build/Link2Download-automation-submission.zip \
+  --keychain-profile GZB-notary --wait --timeout 20m
+# Continue only after Accepted; inspect the notary log on rejection.
+xcrun stapler staple build/Link2Download.app
+xcrun stapler validate build/Link2Download.app
+codesign --verify --deep --strict build/Link2Download.app
+spctl --assess --type execute --verbose=4 build/Link2Download.app
+ditto -c -k --sequesterRsrc --keepParent build/Link2Download.app build/Link2Download-Automation-Preview-macOS.zip
+shasum -a 256 build/Link2Download-Automation-Preview-macOS.zip
+```
+
+The submission ZIP, notary receipts and private diagnostics stay under ignored `build/`. Distribute only the final ZIP made after stapling. For public releases continue to follow the complete installer checklist below.
+
+### Stable release history
+
 Version 1.4.5 was built from commit `0ea7fa9` as a Universal 2 app on 2026-09-24. The app and DMG were accepted by Apple notarization, stapled, validated and accepted by Gatekeeper. Isolated YouTube download and merge smoke tests passed for Apple Silicon and Intel under Rosetta. The app was installed and launched from `/Applications`.
 
 Release DMG SHA-256: `b2b100566535ca9d92bc8e37ed8ddb5af7ba8a9ca6a1ecd696c7af7180f2e3d0`.

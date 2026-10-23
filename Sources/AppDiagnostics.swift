@@ -21,7 +21,8 @@ final class AppDiagnostics: @unchecked Sendable {
     private init() {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory())
-        let appSupport = support.appendingPathComponent("Link2Download", isDirectory: true)
+        let appSupport = ProcessInfo.processInfo.environment["LINK2DOWNLOAD_TEST_HOME"].map { URL(fileURLWithPath: $0) }
+            ?? support.appendingPathComponent("Link2Download", isDirectory: true)
         let logsDir = appSupport.appendingPathComponent("logs", isDirectory: true)
         try? FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true)
 
@@ -42,7 +43,7 @@ final class AppDiagnostics: @unchecked Sendable {
     }
 
     func log(_ level: Level, _ message: String) {
-        let normalized = message
+        let normalized = DiagnosticRedactor.redact(message)
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\n", with: " | ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
