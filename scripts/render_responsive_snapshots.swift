@@ -29,11 +29,17 @@ struct ResponsiveSnapshotRenderer {
             Scenario(name: "regular-manual", size: NSSize(width: 1320, height: 820), smartMode: false)
         ]
 
-        let settings = SettingsStore()
-        let originalSmartMode = settings.smartModeEnabled
-        defer { settings.smartModeEnabled = originalSmartMode }
-
-        let manager = DownloadManager(settings: settings)
+        let suiteName = "Link2Download.snapshots.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let historyDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(suiteName, isDirectory: true)
+        try FileManager.default.createDirectory(at: historyDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: historyDirectory) }
+        var preferences = DownloadPreferences.default()
+        preferences.saveDirectory = historyDirectory.appendingPathComponent("downloads").path
+        defaults.set(try JSONEncoder().encode(preferences), forKey: "link2download.preferences")
+        let settings = SettingsStore(defaults: defaults)
+        let manager = DownloadManager(settings: settings, historyDirectory: historyDirectory)
         let application = NSApplication.shared
         application.setActivationPolicy(.accessory)
         application.activate(ignoringOtherApps: true)

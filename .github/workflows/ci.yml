@@ -15,7 +15,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate shell scripts
-        run: bash -n scripts/*.sh
+        run: for script in scripts/*.sh; do bash -n "$script"; done
+      - name: Check app availability for macOS 12 on both architectures
+        run: |
+          SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+          for arch in arm64 x86_64; do
+            xcrun swiftc -parse-as-library -typecheck -module-name Link2Download \
+              -target "${arch}-apple-macos12.0" -sdk "$SDK_PATH" \
+              Sources/*.swift Control/*.swift \
+              -framework SwiftUI -framework AppKit -framework UniformTypeIdentifiers -framework Security
+          done
+      - name: Test automation API
+        run: ./scripts/test_automation.sh
+      - name: Build universal CLI and MCP helper
+        run: ./scripts/build_cli.sh
+      - name: Test CLI and MCP protocol
+        run: python3 scripts/test_cli_mcp.py --binary build/link2download
+      - name: Test deployment-target checker
+        run: python3 scripts/test_macos_compatibility.py
+      - name: Verify helper macOS 12 deployment targets
+        run: python3 scripts/check_macos_compatibility.py build/link2download
       - name: Test retry and history behavior
         run: ./scripts/test_retry_history.sh
       - name: Test runtime process handling

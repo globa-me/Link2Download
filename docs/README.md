@@ -3,6 +3,7 @@
 ## Users
 
 - [Main README](../README.md) — downloads, features and local build instructions
+- [macOS CLI and MCP automation](automation.md) — commands, Codex/Claude Code setup, architecture and testing
 - [Windows README](../windows/README.md) — Windows preview setup and packaging
 
 ## Development and releases

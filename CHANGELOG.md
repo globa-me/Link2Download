@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### macOS
+
+- Add a bundled native CLI and 29 MCP tools for downloads, playlist operations, Apple MOV copies, settings, history, file/source actions, diagnostics and window controls.
+- Share app-owned state across GUI, CLI and MCP; support background launch, structured progress/errors, per-job settings, persisted operation IDs and idempotent enqueue requests.
+- Preserve macOS 12 support with a dependency-free stdio adapter; add isolated protocol/CLI and domain regression checks and an [automation guide](docs/automation.md).
+- Correct saved audio format metadata after extraction, persist complete settings updates, and preserve an explicit no-cookies preference across restarts.
+
 ## 1.4.5 — 2026-09-24
 
 ### macOS

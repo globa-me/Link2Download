@@ -23,7 +23,7 @@ xcrun swiftc \
   -target "${TARGET_ARCH}-apple-macos12.0" \
   -sdk "$SDK_PATH" \
   -o "$BUILD_DIR/render-responsive-snapshots" \
-  "${SOURCE_FILES[@]}" \
+  "${SOURCE_FILES[@]}" "$ROOT_DIR"/Control/*.swift \
   "$ROOT_DIR/scripts/render_responsive_snapshots.swift" \
   -framework SwiftUI \
   -framework AppKit \
@@ -31,4 +31,4 @@ xcrun swiftc \
   -framework Security \
   -lsqlite3
 
-"$BUILD_DIR/render-responsive-snapshots" "$OUTPUT_DIR"
+LINK2DOWNLOAD_TEST_HOME="$BUILD_DIR/state" "$BUILD_DIR/render-responsive-snapshots" "$OUTPUT_DIR"

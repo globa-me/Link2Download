@@ -70,113 +70,128 @@ final class DownloadManager: ObservableObject {
     }
 
     func enqueue(urlString: String) {
-        enqueue(urlString: urlString, retryRecordID: nil)
+        do { _ = try enqueueDownload(urlString: urlString, preferences: settings.snapshot(), retryRecordID: nil, requestID: nil, controlled: false) }
+        catch { toastMessage = error.localizedDescription }
     }
 
-    private func enqueue(urlString: String, retryRecordID: UUID?) {
-        let cleanURL = service.normalize(urlString: urlString)
-        guard service.validate(urlString: cleanURL) else {
-            toastMessage = settings.t("toast.invalidURL")
-            diagnostics.log(.warning, "Rejected invalid URL from clipboard/input")
-            return
-        }
+    func enqueueControlled(urlString: String, preferences: DownloadPreferences, requestID: String? = nil) throws -> UUID {
+        try enqueueDownload(urlString: urlString, preferences: preferences, retryRecordID: nil, requestID: requestID, controlled: true)
+    }
 
-        let profile = settings.resolveProfile(for: cleanURL)
+    private func enqueueDownload(urlString: String, preferences: DownloadPreferences, retryRecordID: UUID?, requestID: String?, controlled: Bool) throws -> UUID {
+        let cleanURL = service.normalize(urlString: urlString)
+        let profile = SettingsStore.resolveProfile(for: cleanURL, preferences: preferences)
+        if let requestID, let existing = records.first(where: { $0.requestID == requestID }) {
+            guard existing.sourceURL == cleanURL, existing.operationType != .transcodeCopy,
+                  existing.requestedPreferences.map({ sameOperationPreferences($0, preferences) }) == true, existing.resolvedProfile == profile else {
+                throw ControlError("REQUEST_CONFLICT", "The request ID already belongs to a different operation.")
+            }
+            return existing.operationID ?? existing.id
+        }
+        guard service.validate(urlString: cleanURL) else {
+            throw ControlError("INVALID_URL", settings.t("toast.invalidURL"))
+        }
         let qualityLabel = settings.label(for: profile.quality)
         let formatLabel = profile.outputFormatLabel
-
-        if let existingIndex = records.firstIndex(where: {
-            $0.sourceURL == cleanURL &&
-            ($0.status == .queued || $0.status == .downloading ||
-             $0.id == activeDownloadID || $0.id == activeTranscodeID) &&
-            $0.operationType != .transcodeCopy &&
-            $0.kind == profile.kind &&
-            $0.qualityLabel == qualityLabel &&
-            $0.outputFormat == formatLabel
+        func matches(_ record: DownloadRecord) -> Bool {
+            guard record.sourceURL == cleanURL, record.operationType != .transcodeCopy else { return false }
+            if let attempted = record.attemptPreferences ?? record.requestedPreferences,
+               let resolved = record.attemptProfile ?? record.resolvedProfile {
+                return sameOperationPreferences(attempted, preferences) && resolved == profile
+            }
+            return record.kind == profile.kind && record.qualityLabel == qualityLabel && record.outputFormat == formatLabel
+        }
+        if let existing = records.first(where: {
+            matches($0) && ($0.status == .queued || $0.status == .downloading || $0.id == activeDownloadID || $0.id == activeTranscodeID)
         }) {
-            records[existingIndex].updatedAt = Date()
+            if existing.status == .cancelled || existing.status == .failed {
+                throw ControlError("TASK_STOPPING", "The previous worker is still stopping.")
+            }
+            if controlled, requestID != nil, requestID != existing.requestID {
+                throw ControlError("ALREADY_QUEUED", "An identical operation is already queued: \(existing.id.uuidString)")
+            }
             toastMessage = settings.t("toast.alreadyQueued")
-            diagnostics.log(.info, "Skipped duplicate enqueue for active item: \(cleanURL)")
-            persistHistory()
-            return
+            return existing.operationID ?? existing.id
         }
-
-        let preferences = settings.snapshot()
-        let serviceName = service.inferServiceName(from: cleanURL)
-
-        // Retry reuses the selected row; pasting a matching failed/cancelled URL
-        // also reuses history instead of accumulating failed attempts.
-        let reusableIndex = retryRecordID.flatMap { id in
-            records.firstIndex { $0.id == id }
-        } ?? records.firstIndex {
-            $0.sourceURL == cleanURL &&
-            ($0.status == .failed || $0.status == .cancelled) &&
-            $0.operationType != .transcodeCopy &&
-            $0.kind == profile.kind &&
-            $0.qualityLabel == qualityLabel &&
-            $0.outputFormat == formatLabel
-        }
+        // GUI pastes preserve historical row reuse; explicit API operations retain
+        // terminal request IDs so a later idempotent call cannot duplicate work.
+        let reusableIndex = retryRecordID.flatMap { id in records.firstIndex { $0.id == id } }
+            ?? (controlled ? nil : records.firstIndex {
+                matches($0) && $0.requestID == nil && ($0.status == .failed || $0.status == .cancelled)
+            })
         let previousRecord = reusableIndex.map { records[$0] }
+        let id = previousRecord?.id ?? UUID()
         let record = DownloadRecord(
-            id: previousRecord?.id ?? UUID(),
-            sourceURL: cleanURL,
-            serviceName: serviceName,
-            title: previousRecord?.title ?? cleanURL,
-            durationSeconds: previousRecord?.durationSeconds,
-            status: .queued,
-            progress: 0,
-            downloadProgress: 0.0,
-            processingProgress: nil,
-            statusMessage: settings.t("row.status.queued"),
-            createdAt: previousRecord?.createdAt ?? Date(),
-            kind: profile.kind,
-            qualityLabel: qualityLabel,
-            outputFormat: formatLabel,
-            uploaderName: previousRecord?.uploaderName,
-            thumbnailPath: previousRecord?.thumbnailPath,
-            processingStage: nil
+            id: id, sourceURL: cleanURL, serviceName: service.inferServiceName(from: cleanURL),
+            title: previousRecord?.title ?? cleanURL, durationSeconds: previousRecord?.durationSeconds,
+            status: .queued, progress: 0, downloadProgress: 0, processingProgress: nil,
+            statusMessage: settings.t("row.status.queued"), createdAt: previousRecord?.createdAt ?? Date(),
+            kind: profile.kind, qualityLabel: qualityLabel, outputFormat: formatLabel,
+            uploaderName: previousRecord?.uploaderName, thumbnailPath: previousRecord?.thumbnailPath,
+            operationID: previousRecord?.operationID ?? id, requestID: requestID ?? previousRecord?.requestID,
+            requestedPreferences: previousRecord?.requestedPreferences ?? preferences,
+            resolvedProfile: previousRecord?.resolvedProfile ?? profile,
+            attemptPreferences: preferences, attemptProfile: profile
         )
-
-        if let reusableIndex {
-            records[reusableIndex] = record
-        } else {
-            records.append(record)
-        }
-        diagnostics.log(
-            .info,
-            "Enqueued download; id=\(record.id.uuidString) kind=\(profile.kind.rawValue) quality=\(profile.quality.rawValue) format=\(formatLabel) smart=\(preferences.smartModeEnabled)"
-        )
-        downloadQueue.append(
-            QueuedDownloadRequest(
-                recordID: record.id,
-                urlString: cleanURL,
-                preferences: preferences,
-                profile: profile
-            )
-        )
+        if let reusableIndex { records[reusableIndex] = record } else { records.append(record) }
+        diagnostics.log(.info, "Enqueued download; id=\(record.id.uuidString) kind=\(profile.kind.rawValue) quality=\(profile.quality.rawValue) format=\(formatLabel)")
+        downloadQueue.append(QueuedDownloadRequest(recordID: id, urlString: cleanURL, preferences: preferences, profile: profile))
         refreshQueuedStatuses()
         persistHistory()
         startNextDownloadIfNeeded()
+        return record.operationID ?? id
     }
 
     func enqueueTranscodeCopy(recordID: UUID) {
-        guard let sourceRecord = records.first(where: { $0.id == recordID }) else { return }
+        do { _ = try enqueueTranscodeControlled(recordID: recordID, preferences: settings.snapshot()) }
+        catch { toastMessage = error.localizedDescription }
+    }
+
+    func enqueueTranscodeControlled(recordID: UUID, preferences: DownloadPreferences, requestID: String? = nil) throws -> UUID {
+        guard let sourceRecord = records.first(where: { $0.id == recordID }) else {
+            throw ControlError("RECORD_NOT_FOUND", "The source record was not found.")
+        }
+        if let requestID, let existing = records.first(where: { $0.requestID == requestID }) {
+            // A source file may be deleted or replaced after this operation was
+            // accepted. Its record ID is the immutable identity of the input.
+            let sameSource = existing.transcodeSourceRecordID.map { $0 == recordID }
+                ?? (existing.transcodeSourcePath == sourceRecord.filePath)
+            guard existing.operationType == .transcodeCopy, sameSource,
+                  existing.sourceURL == sourceRecord.sourceURL,
+                  existing.requestedPreferences.map({ sameOperationPreferences($0, preferences) }) == true else {
+                throw ControlError("REQUEST_CONFLICT", "The request ID already belongs to a different operation.")
+            }
+            return existing.operationID ?? existing.id
+        }
         guard sourceRecord.kind == .video else {
-            toastMessage = settings.t("toast.transcodeVideoOnly")
-            return
+            throw ControlError("INVALID_STATE", settings.t("toast.transcodeVideoOnly"))
         }
-        guard let sourcePath = sourceRecord.filePath,
-              FileManager.default.fileExists(atPath: sourcePath) else {
-            toastMessage = settings.t("toast.transcodeSourceMissing")
-            return
+        guard sourceRecord.status != .queued, sourceRecord.status != .downloading else {
+            throw ControlError("INVALID_STATE", settings.t("toast.alreadyQueued"))
         }
+        guard activeDownloadID != recordID, activeTranscodeID != recordID else {
+            throw ControlError("TASK_STOPPING", "The source worker is still stopping.")
+        }
+        guard let sourcePath = sourceRecord.filePath, FileManager.default.fileExists(atPath: sourcePath) else {
+            throw ControlError("FILE_MISSING", settings.t("toast.transcodeSourceMissing"))
+        }
+        return try enqueueTranscodeCopy(sourceRecord: sourceRecord, sourcePath: sourcePath, preferences: preferences, requestID: requestID)
+    }
 
-        if sourceRecord.status == .queued || sourceRecord.status == .downloading {
-            toastMessage = settings.t("toast.alreadyQueued")
-            return
+    private func sameOperationPreferences(_ lhs: DownloadPreferences, _ rhs: DownloadPreferences) -> Bool {
+        var left = lhs
+        var right = rhs
+        // Language selects subtitle tracks when subtitles are requested.
+        // Otherwise localization does not change the media operation.
+        if !left.includeSubtitles && !right.includeSubtitles {
+            left.language = .system
+            right.language = .system
         }
+        return left == right
+    }
 
-        enqueueTranscodeCopy(sourceRecord: sourceRecord, sourcePath: sourcePath)
+    func operationRecords(_ id: UUID) -> [DownloadRecord] {
+        records.filter { ($0.operationID ?? $0.id) == id }
     }
 
     func playlistPromptContextIfNeeded(for urlString: String) -> PlaylistPromptContext? {
@@ -231,25 +246,37 @@ final class DownloadManager: ObservableObject {
     }
 
     func retry(recordID: UUID) {
-        guard let record = records.first(where: { $0.id == recordID }) else { return }
-        guard record.status == .failed || record.status == .cancelled else { return }
-        // Cancellation updates the row before the old worker has fully stopped.
-        // Reusing its ID before then lets late completion overwrite the retry.
+        do { _ = try retryControlled(recordID: recordID, useOriginalPreferences: false) }
+        catch { toastMessage = error.localizedDescription }
+    }
+
+    func retryControlled(recordID: UUID, useOriginalPreferences: Bool) throws -> UUID {
+        guard let record = records.first(where: { $0.id == recordID }) else {
+            throw ControlError("RECORD_NOT_FOUND", "The record was not found.")
+        }
         guard activeDownloadID != recordID, activeTranscodeID != recordID else {
-            toastMessage = settings.t("toast.alreadyQueued")
-            return
+            throw ControlError("TASK_STOPPING", "The previous worker is still stopping.")
         }
-        if let sourcePath = record.transcodeSourcePath,
-           FileManager.default.fileExists(atPath: sourcePath) {
-            enqueueExistingTranscode(
-                recordID: record.id,
-                sourcePath: sourcePath,
-                sourceURL: record.sourceURL,
-                replaceOriginal: record.operationType != .transcodeCopy
-            )
-            return
+        guard record.status == .failed || record.status == .cancelled else {
+            throw ControlError("INVALID_STATE", "Only failed or cancelled records can be retried.")
         }
-        enqueue(urlString: record.sourceURL, retryRecordID: record.id)
+        let preferences: DownloadPreferences
+        if useOriginalPreferences {
+            guard let original = record.requestedPreferences else {
+                throw ControlError("INVALID_STATE", "This legacy record has no saved original preferences; retry with current preferences.")
+            }
+            preferences = original
+        } else { preferences = settings.snapshot() }
+        if let sourcePath = record.transcodeSourcePath, FileManager.default.fileExists(atPath: sourcePath) {
+            enqueueExistingTranscode(recordID: record.id, sourcePath: sourcePath, sourceURL: record.sourceURL,
+                                     preferences: preferences, replaceOriginal: record.operationType != .transcodeCopy)
+            return record.operationID ?? record.id
+        }
+        if record.operationType == .transcodeCopy {
+            throw ControlError("FILE_MISSING", settings.t("toast.transcodeSourceMissing"))
+        }
+        return try enqueueDownload(urlString: record.sourceURL, preferences: preferences, retryRecordID: record.id,
+                                   requestID: nil, controlled: true)
     }
 
     func retryFailedAndCancelled() {
@@ -277,6 +304,7 @@ final class DownloadManager: ObservableObject {
                 record.status = .cancelled
                 record.statusMessage = settings.t("row.status.cancelled")
                 record.errorMessage = nil
+                record.errorCode = nil
                 record.processingStage = nil
                 record.updatedAt = Date()
             }
@@ -290,6 +318,7 @@ final class DownloadManager: ObservableObject {
                 record.status = .cancelled
                 record.statusMessage = settings.t("row.status.cancelled")
                 record.errorMessage = nil
+                record.errorCode = nil
                 record.processingStage = nil
                 record.processingProgress = nil
                 record.updatedAt = Date()
@@ -304,6 +333,7 @@ final class DownloadManager: ObservableObject {
                 record.status = .cancelled
                 record.statusMessage = settings.t("row.status.cancelled")
                 record.errorMessage = nil
+                record.errorCode = nil
                 record.processingStage = nil
                 record.downloadProgress = nil
                 record.processingProgress = nil
@@ -320,6 +350,7 @@ final class DownloadManager: ObservableObject {
                 record.status = .cancelled
                 record.statusMessage = settings.t("row.status.cancelled")
                 record.errorMessage = nil
+                record.errorCode = nil
                 record.processingStage = nil
                 record.processingProgress = nil
                 record.updatedAt = Date()
@@ -336,11 +367,14 @@ final class DownloadManager: ObservableObject {
             try FileManager.default.removeItem(atPath: path)
             records[index].filePath = nil
             records[index].fileSizeBytes = nil
+            records[index].errorMessage = nil
+            records[index].errorCode = nil
             records[index].statusMessage = settings.t("meta.noFile")
             records[index].updatedAt = Date()
             persistHistory()
         } catch {
-            records[index].errorMessage = error.localizedDescription
+            records[index].errorMessage = DiagnosticRedactor.redact(error.localizedDescription)
+            records[index].errorCode = "FILE_DELETE_FAILED"
             records[index].status = .failed
             records[index].updatedAt = Date()
             persistHistory()
@@ -395,18 +429,24 @@ final class DownloadManager: ObservableObject {
         }
     }
 
-    private func enqueueTranscodeCopy(sourceRecord: DownloadRecord, sourcePath: String) {
-        if records.contains(where: {
+    private func enqueueTranscodeCopy(sourceRecord: DownloadRecord, sourcePath: String, preferences: DownloadPreferences, requestID: String?) throws -> UUID {
+        if let existing = records.first(where: {
             $0.operationType == .transcodeCopy &&
-            ($0.status == .queued || $0.status == .downloading) &&
+            ($0.status == .queued || $0.status == .downloading || $0.id == activeTranscodeID) &&
             $0.transcodeSourcePath == sourcePath
         }) {
-            toastMessage = settings.t("toast.alreadyQueued")
-            return
+            if existing.status == .cancelled || existing.status == .failed {
+                throw ControlError("TASK_STOPPING", "The previous worker is still stopping.")
+            }
+            if requestID != nil, requestID != existing.requestID {
+                throw ControlError("ALREADY_QUEUED", "A transcode of this source is already queued: \(existing.id.uuidString)")
+            }
+            return existing.operationID ?? existing.id
         }
 
-        let preferences = settings.snapshot()
+        let id = UUID()
         let transcodeRecord = DownloadRecord(
+            id: id,
             sourceURL: sourceRecord.sourceURL,
             serviceName: sourceRecord.serviceName,
             title: "\(sourceRecord.title) [Apple MOV]",
@@ -430,8 +470,12 @@ final class DownloadManager: ObservableObject {
             processingStage: nil,
             operationType: .transcodeCopy,
             transcodeSourcePath: sourcePath,
+            transcodeSourceRecordID: sourceRecord.id,
             originalVideoBitrateBps: sourceRecord.originalVideoBitrateBps ?? sourceRecord.transcodedVideoBitrateBps,
-            transcodedVideoBitrateBps: nil
+            transcodedVideoBitrateBps: nil,
+            operationID: id, requestID: requestID, requestedPreferences: preferences,
+            resolvedProfile: sourceRecord.resolvedProfile,
+            attemptPreferences: preferences, attemptProfile: sourceRecord.attemptProfile ?? sourceRecord.resolvedProfile
         )
 
         records.append(transcodeRecord)
@@ -451,20 +495,24 @@ final class DownloadManager: ObservableObject {
         refreshQueuedStatuses()
         persistHistory()
         startNextTranscodeIfNeeded()
+        return id
     }
 
-    private func enqueueExistingTranscode(recordID: UUID, sourcePath: String, sourceURL: String, replaceOriginal: Bool = true) {
+    private func enqueueExistingTranscode(recordID: UUID, sourcePath: String, sourceURL: String, preferences: DownloadPreferences, replaceOriginal: Bool = true) {
         guard let index = records.firstIndex(where: { $0.id == recordID }) else { return }
         if activeTranscodeID == recordID || transcodeQueue.contains(where: { $0.recordID == recordID }) {
             toastMessage = settings.t("toast.alreadyQueued")
             return
         }
 
-        let preferences = settings.snapshot()
         updateRecord(recordID) { record in
+            if record.requestedPreferences == nil { record.requestedPreferences = preferences }
+            record.attemptPreferences = preferences
+            record.attemptProfile = record.attemptProfile ?? record.resolvedProfile
             record.status = .queued
             record.statusMessage = settings.t("row.status.queued")
             record.errorMessage = nil
+            record.errorCode = nil
             if !replaceOriginal {
                 record.progress = 0
                 record.downloadProgress = nil
@@ -511,6 +559,7 @@ final class DownloadManager: ObservableObject {
             record.processingProgress = nil
             record.processingStage = .preparing
             record.errorMessage = nil
+            record.errorCode = nil
             record.downloadedBytes = nil
             record.totalBytes = nil
             record.averageSpeedBytesPerSecond = nil
@@ -535,6 +584,7 @@ final class DownloadManager: ObservableObject {
             record.processingStage = .remuxing
             record.processingProgress = max(record.processingProgress ?? 0.0, 0.0)
             record.errorMessage = nil
+            record.errorCode = nil
             if record.operationType == .transcodeCopy {
                 record.progress = 0.0
                 record.downloadProgress = nil
@@ -698,6 +748,7 @@ final class DownloadManager: ObservableObject {
                     record.status = .cancelled
                     record.statusMessage = settings.t("row.status.cancelled")
                     record.errorMessage = nil
+                    record.errorCode = nil
                     record.processingStage = nil
                     record.processingProgress = nil
                     record.updatedAt = Date()
@@ -707,7 +758,8 @@ final class DownloadManager: ObservableObject {
                 updateRecord(request.recordID) { record in
                     record.status = .failed
                     record.statusMessage = settings.t("meta.failed")
-                    record.errorMessage = self.userFriendlyErrorMessage(error, sourceURL: request.urlString)
+                    record.errorMessage = DiagnosticRedactor.redact(self.userFriendlyErrorMessage(error, sourceURL: request.urlString))
+                    record.errorCode = self.stableErrorCode(error)
                     record.processingStage = nil
                     record.processingProgress = nil
                     record.updatedAt = Date()
@@ -961,6 +1013,8 @@ final class DownloadManager: ObservableObject {
 
             updateRecord(request.recordID) { record in
                 record.status = .completed
+                record.errorMessage = nil
+                record.errorCode = nil
                 record.progress = 1.0
                 if record.downloadProgress != nil {
                     record.downloadProgress = 1.0
@@ -985,6 +1039,7 @@ final class DownloadManager: ObservableObject {
                     record.status = .cancelled
                     record.statusMessage = settings.t("row.status.cancelled")
                     record.errorMessage = nil
+                    record.errorCode = nil
                     record.processingStage = nil
                     record.processingProgress = nil
                     record.updatedAt = Date()
@@ -994,7 +1049,8 @@ final class DownloadManager: ObservableObject {
                 updateRecord(request.recordID) { record in
                     record.status = .failed
                     record.statusMessage = settings.t("meta.failed")
-                    record.errorMessage = self.userFriendlyErrorMessage(error, sourceURL: request.sourceURL)
+                    record.errorMessage = DiagnosticRedactor.redact(self.userFriendlyErrorMessage(error, sourceURL: request.sourceURL))
+                    record.errorCode = self.stableErrorCode(error)
                     record.processingStage = nil
                     record.processingProgress = nil
                     record.updatedAt = Date()
@@ -1018,9 +1074,13 @@ final class DownloadManager: ObservableObject {
     }
 
     private func handleCompletedFiles(_ files: [CompletedFile], for request: QueuedDownloadRequest) async {
+        // Removing history while a worker stops must not resurrect playlist rows.
+        guard records.contains(where: { $0.id == request.recordID }) else { return }
         if files.isEmpty {
             updateRecord(request.recordID) { record in
                 record.status = .completed
+                record.errorMessage = nil
+                record.errorCode = nil
                 record.progress = 1.0
                 record.downloadProgress = 1.0
                 record.processingProgress = nil
@@ -1035,6 +1095,8 @@ final class DownloadManager: ObservableObject {
         let first = files[0]
         updateRecord(request.recordID) { record in
             record.status = .completed
+            record.errorMessage = nil
+            record.errorCode = nil
             record.progress = 1.0
             record.downloadProgress = 1.0
             record.processingProgress = nil
@@ -1092,7 +1154,10 @@ final class DownloadManager: ObservableObject {
                     operationType: .download,
                     transcodeSourcePath: nil,
                     originalVideoBitrateBps: file.originalVideoBitrateBps,
-                    transcodedVideoBitrateBps: file.transcodedVideoBitrateBps
+                    transcodedVideoBitrateBps: file.transcodedVideoBitrateBps,
+                    operationID: parentRecord?.operationID ?? request.recordID,
+                    requestedPreferences: request.preferences, resolvedProfile: request.profile,
+                    attemptPreferences: request.preferences, attemptProfile: request.profile
                 )
                 self.records.append(extra)
             }
@@ -1100,6 +1165,7 @@ final class DownloadManager: ObservableObject {
     }
 
     private func stageCompletedFilesForProcessing(_ files: [CompletedFile], for request: QueuedDownloadRequest) async {
+        guard records.contains(where: { $0.id == request.recordID }) else { return }
         guard !files.isEmpty else {
             await handleCompletedFiles(files, for: request)
             return
@@ -1153,7 +1219,10 @@ final class DownloadManager: ObservableObject {
                     operationType: .download,
                     transcodeSourcePath: file.path,
                     originalVideoBitrateBps: file.originalVideoBitrateBps,
-                    transcodedVideoBitrateBps: file.transcodedVideoBitrateBps
+                    transcodedVideoBitrateBps: file.transcodedVideoBitrateBps,
+                    operationID: parentRecord?.operationID ?? request.recordID,
+                    requestedPreferences: request.preferences, resolvedProfile: request.profile,
+                    attemptPreferences: request.preferences, attemptProfile: request.profile
                 )
                 records.append(extra)
                 transcodeQueue.append(
@@ -1306,7 +1375,7 @@ final class DownloadManager: ObservableObject {
         return raw.isEmpty ? error.localizedDescription : raw
     }
 
-    private func buildDebugReport() -> String {
+    func buildDebugReport() -> String {
         let snapshot = settings.snapshot()
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -1459,6 +1528,19 @@ final class DownloadManager: ObservableObject {
         return isAuthenticationRestrictedError(error) ||
             isBrowserCookieExtractionError(error) ||
             isRequestedFormatUnavailableError(error)
+    }
+
+    private func stableErrorCode(_ error: Error) -> String? {
+        if isAuthenticationRestrictedError(error) { return "AUTH_REQUIRED" }
+        if let failure = error as? ControlError { return failure.code }
+        guard let failure = error as? DownloadError else { return "PROCESS_FAILED" }
+        switch failure {
+        case .invalidURL: return "INVALID_URL"
+        case .toolsMissing: return "TOOLS_MISSING"
+        case .metadataFailed: return "METADATA_FAILED"
+        case .processFailed: return "PROCESS_FAILED"
+        case .cancelled: return nil
+        }
     }
 
     private func isAuthenticationRestrictedError(_ error: Error) -> Bool {
@@ -1641,6 +1723,10 @@ final class DownloadManager: ObservableObject {
             .sorted { $0.updatedAt > $1.updatedAt }
             .map { record in
                 var normalized = record
+                if let message = normalized.errorMessage {
+                    let redacted = DiagnosticRedactor.redact(message)
+                    if message != redacted { normalized.errorMessage = redacted; changed = true }
+                }
                 syncLegacyProgress(&normalized)
                 if reconcilePersistedInFlightRecord(&normalized) {
                     changed = true
@@ -1661,6 +1747,7 @@ final class DownloadManager: ObservableObject {
         record.status = .failed
         record.statusMessage = settings.t("meta.failed")
         record.errorMessage = settings.t("error.interruptedSession")
+        record.errorCode = "SESSION_INTERRUPTED"
         record.processingStage = nil
         record.updatedAt = Date()
         syncLegacyProgress(&record)
@@ -1693,6 +1780,15 @@ final class DownloadManager: ObservableObject {
 
         pendingHistoryPersistWorkItem = nil
         historyPersistenceQueue.async(execute: workItem)
+    }
+
+    /// Serialize after outstanding writes, cancelling debounced snapshots first.
+    func flushHistory() throws {
+        pendingHistoryPersistWorkItem?.cancel()
+        pendingHistoryPersistWorkItem = nil
+        let data = try JSONEncoder().encode(records)
+        let targetURL = historyFileURL
+        try historyPersistenceQueue.sync { try data.write(to: targetURL, options: .atomic) }
     }
 
     private func saveThumbnail(data: Data, recordID: UUID) -> String? {

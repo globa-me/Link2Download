@@ -68,6 +68,13 @@ struct MainView: View {
         .sheet(isPresented: $isShowingAbout) {
             AboutSheetView(settings: settings)
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("Link2Download.Control.UI"))) { notification in
+            switch notification.userInfo?["panel"] as? String {
+            case "settings": isShowingAbout = false; isShowingSettings = true
+            case "about": isShowingSettings = false; isShowingAbout = true
+            default: break
+            }
+        }
     }
 
     private func header(layout: MainWindowLayout) -> some View {

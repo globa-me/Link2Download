@@ -40,6 +40,16 @@ The macOS app is ready for everyday use. The Windows WPF port is under active de
 - Use browser cookies when a site requires an authenticated session.
 - Run in English, Russian, Hindi or Chinese.
 
+## CLI and MCP automation
+
+The current macOS source includes a native CLI and 29 MCP tools for Codex and Claude Code. They control the same queue, history and settings as the app, with background launch and per-job overrides. macOS 12 remains supported; no additional scripting runtime is required. This functionality is unreleased and requires a new source build.
+
+```bash
+/Applications/Link2Download.app/Contents/MacOS/link2download-cli --help
+```
+
+See the [automation guide](docs/automation.md) for installation, client registration, command examples, compatibility limits and developer handoff.
+
 ## Screenshots
 
 <table>
@@ -132,6 +142,9 @@ Build outputs are kept in `build/` and are not committed to Git. To rebuild afte
 ## macOS regression checks
 
 ```bash
+./scripts/build_cli.sh
+python3 scripts/test_cli_mcp.py --binary "$PWD/build/link2download" -v
+./scripts/test_automation.sh
 ./scripts/test_retry_history.sh
 ./scripts/test_runtime_process.sh
 ./scripts/test_process_error_message.sh
@@ -224,6 +237,8 @@ Site support follows the upstream [yt-dlp supported-sites list](https://github.c
 ## Project structure
 
 - `Sources/` — macOS app source code
+- `Control/` — shared local automation contract and Unix transport
+- `CLI/` — native CLI and stdio MCP adapter
 - `Resources/` — macOS icon, helper, and embedded runtime-tool directory
 - `scripts/` — macOS build and packaging scripts
 - `CHANGELOG.md` — release notes and version history

@@ -8,7 +8,13 @@ struct RetryHistoryRegression {
             .appendingPathComponent("Link2Download-retry-tests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let settings = SettingsStore()
+        let suiteName = "Link2Download.retry.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        var preferences = DownloadPreferences.default()
+        preferences.saveDirectory = directory.path
+        defaults.set(try JSONEncoder().encode(preferences), forKey: "link2download.preferences")
+        let settings = SettingsStore(defaults: defaults)
         settings.saveDirectory = directory.path
         let manager = DownloadManager(settings: settings, historyDirectory: directory)
         // Keep requests queued so this test cannot launch downloads or use the network.
