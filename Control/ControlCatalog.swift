@@ -79,25 +79,25 @@ enum ControlCatalog {
                         description: description, inputSchema: schema, readonly: read, destructive: destructive)
         }
         let id = object(["id": uuid], required: ["id"])
-        var target = object(["id": uuid, "operationId": uuid])
-        target["oneOf"] = [["required": ["id"]], ["required": ["operationId"]]]
-        var getTarget = object(["id": uuid, "operationId": uuid, "limit": ["type": "integer", "minimum": 1, "maximum": 500], "offset": ["type": "integer", "minimum": 0]])
-        getTarget["oneOf"] = target["oneOf"]
+        // Claude Code can exclude tools with root-level schema combinators.
+        // Keep the exclusive target check in validate(method:params:) below.
+        let target = object(["id": uuid, "operationId": uuid])
+        let getTarget = object(["id": uuid, "operationId": uuid, "limit": ["type": "integer", "minimum": 1, "maximum": 500], "offset": ["type": "integer", "minimum": 0]])
         return [
             tool("app.status", "Read application and worker status.", read: true),
             tool("app.quit", "Quit Link2Download. Active work requires force=true.", object(["force": boolean]), destructive: true),
             tool("capabilities.get", "Read API version, commands, option enums and runtime capabilities.", read: true),
             tool("downloads.enqueue", "Enqueue a URL and return an operation ID immediately. Job options do not alter global settings. Specify playlist single or all for playlist URLs.", object(["url": string(min: 1, max: 8192), "playlist": string(["single", "all"]), "options": object(preferenceProperties), "mode": string(["smart", "manual"]), "requestId": string(min: 1, max: 200)], required: ["url"])),
-            tool("downloads.get", "Read progress for a record ID or operation ID, including processing and terminal/stopping flags across all records. Paginates records (default 100, max 500).", getTarget, read: true),
+            tool("downloads.get", "Specify exactly one of id or operationId. Read progress, including processing and terminal/stopping flags across all records. Paginates records (default 100, max 500).", getTarget, read: true),
             tool("downloads.list", "Search persisted history and queue. Pagination limit 1–500, offset >= 0.", object(["query": string(max: 1000), "status": string(["queued", "downloading", "completed", "failed", "cancelled"]), "kind": string(["video", "audio"]), "limit": ["type": "integer", "minimum": 1, "maximum": 500], "offset": ["type": "integer", "minimum": 0]]), read: true),
-            tool("downloads.cancel", "Request cancellation for a record or entire operation; poll until stopping is false.", target),
+            tool("downloads.cancel", "Specify exactly one of id or operationId. Request cancellation for a record or entire operation; poll until stopping is false.", target),
             tool("downloads.retry", "Retry a failed or cancelled record with current settings (default) or original preferences.", object(["id": uuid, "preferences": string(["original", "current"])], required: ["id"])),
             tool("downloads.retry_errors", "Retry all eligible failed/cancelled records with current (default) or original preferences.", object(["preferences": string(["original", "current"])])),
             tool("transcodes.enqueue", "Create an Apple MOV copy of a completed video record. Returns immediately.", object(["id": uuid, "requestId": string(min: 1, max: 200), "options": object(preferenceProperties)], required: ["id"])),
             tool("settings.get", "Read persistent preferences.", read: true),
             tool("settings.update", "Atomically update persistent preferences. For per-job overrides use downloads_enqueue.options.", object(["changes": object(preferenceProperties)], required: ["changes"])),
             tool("settings.reset", "Reset persistent preferences to application defaults.", destructive: true),
-            tool("history.remove", "Cancel/remove a record or operation from history. Downloaded files are retained.", target, destructive: true),
+            tool("history.remove", "Specify exactly one of id or operationId. Cancel/remove a record or operation from history. Downloaded files are retained.", target, destructive: true),
             tool("history.clear", "Cancel/remove all history records and return counts. Downloaded files are retained.", destructive: true),
             tool("history.clear_errors", "Remove failed/cancelled history records, stopping any lingering workers, and return counts. Downloaded files are retained.", destructive: true),
             tool("files.open", "Open a downloaded file in its associated application.", id),

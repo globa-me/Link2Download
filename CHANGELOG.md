@@ -8,6 +8,7 @@
 - Share app-owned state across GUI, CLI and MCP; support background launch, structured progress/errors, per-job settings, persisted operation IDs and idempotent enqueue requests.
 - Preserve macOS 12 support with a dependency-free stdio adapter; add isolated protocol/CLI and domain regression checks and an [automation guide](docs/automation.md).
 - Correct saved audio format metadata after extraction, persist complete settings updates, and preserve an explicit no-cookies preference across restarts.
+- Keep all 29 MCP tools discoverable in Claude Code without its optional root-union schema rewrite; exclusive record/operation targets remain validated server-side.
 
 ## 1.4.5 — 2026-09-24
 
