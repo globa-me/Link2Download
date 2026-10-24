@@ -4,6 +4,19 @@ This document describes the current Developer ID release process. Version-specif
 
 ## Current release verification
 
+### Installed automation preview — 2026-10-24
+
+The Claude Code schema compatibility fix was rebuilt as Universal 2, app version **1.4.5 (241026)**, and installed at `/Applications/Link2Download.app`. The current local bundle and archive are `build/Link2Download.app` and `build/Link2Download-Automation-Preview-macOS.zip`. No new public GitHub binary release was published.
+
+- Developer ID G2 identity `6E99F92E9A1BA1273CD084FAFE940A7280DB0A30`, team `BN3D9H4C7J`, Hardened Runtime and secure timestamps.
+- Apple notarization profile `GZB-notary`: **Accepted**, submission `f9c88016-d593-4929-99bb-2f6ce4c4aa19`. The ticket was stapled and validated. Source, installed and final ZIP-extracted apps passed signature and Gatekeeper checks as `Notarized Developer ID`.
+- Final archive (recreated after stapling) SHA-256: `58e22d1c2d843d0e79bac215b9684be85c2217d1ba8f025b4fc68f1b8c51dd31`.
+- All 109 bundled Mach-O images retain minimum OS <= macOS 12 on arm64 and x86_64. The rebuilt app passed isolated ARM64 video/M4A/MOV, native MCP, persistence and shutdown/restart checks on macOS 26.7.1. The prior preview also passed Intel under Rosetta; actual macOS 12 and physical Intel remain untested.
+- The final installed build passed five actual Codex MCP calls using its persistent user configuration. Claude Code 2.1.308 connects and discovers all 29 tools; a Claude model session remains blocked by missing user authentication. See [installed client verification](automation.md#installed-client-verification--2026-10-24).
+- The old installed app, original state/config snapshots and prior preview remain privately backed up under ignored `build/installation-20261024/`. All 56 original history record IDs and every record field are retained; app startup applies its existing history ordering. Persistent download preferences are unchanged.
+
+To reproduce, use the normal preview commands below with `APP_BUILD=241026`. Any rebuild requires its own notarization submission and resulting archive checksum; never reuse the recorded ticket for changed binaries.
+
 ### Local automation preview — 2026-10-23
 
 The CLI/MCP implementation has a locally verified Universal 2 preview at `build/Link2Download-Automation-Preview-macOS.zip`. This is not a new GitHub binary release; the public stable release remains 1.4.5. The preview retains app version 1.4.5 with build 231026.

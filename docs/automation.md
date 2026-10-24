@@ -47,6 +47,8 @@ claude mcp add --scope user --transport stdio link2download -- \
 claude mcp list
 ```
 
+Keep MCP input schemas as root objects without `oneOf`, `anyOf` or `allOf`. Claude Code can exclude tools with root-level unions when its optional schema rewrite is unavailable. Commands accepting a record or operation describe the exclusive choice and enforce exactly one of `id` or `operationId` in the shared server-side validator. This preserves all 29 tools across clients, including `downloads_get`, `downloads_cancel` and `history_remove`. See [Claude Code schema compatibility](https://code.claude.com/docs/en/mcp#tool-input-schemas-with-a-root-level-combinator).
+
 For a different installation location, replace the absolute helper path. Use the client's MCP status view to check discovery. Configuration syntax follows the [Codex MCP documentation](https://developers.openai.com/codex/mcp/) and [Claude Code MCP documentation](https://code.claude.com/docs/en/mcp). The Codex command was also checked against the installed CLI's `mcp add --help`; Claude Code was not installed on the development Mac at implementation time.
 
 An example instruction for either agent: “Download these links as M4A to `/Users/me/Music/Clips`, without changing my app preferences. Wait for processing to finish, then list the saved files.” The agent should enqueue, retain the operation IDs and poll `downloads_get`.
@@ -286,3 +288,14 @@ The `-cli` suffix is intentional: on default case-insensitive APFS, a helper nam
 This implementation does not itself constitute a new signed/notarized public release. Keep actual build, runtime, client-session and release verification results in the release/handoff documentation when those checks are completed.
 
 A local Universal 2 preview was Developer ID signed, accepted by Apple notarization and stapled on 2026-10-23. Its checksum, verification limits and reproduction commands are recorded in the [release runbook](macos-release.md#local-automation-preview--2026-10-23). No new public GitHub binary release was published.
+
+
+## Installed client verification — 2026-10-24
+
+The user requested replacing the installed app and enabling both clients. The notarized preview was installed at `/Applications/Link2Download.app`; both user-level MCP entries launch `/Applications/Link2Download.app/Contents/MacOS/link2download-cli mcp serve`. Codex uses `~/.codex/config.toml` (shared with the desktop app on this host); Claude Code uses the user scope in `~/.claude.json`. Unrelated server configurations were preserved. Existing desktop conversations may need a new conversation or MCP reconnect to load a newly added server.
+
+Claude Code was absent and installed using the official native installer, stable version 2.1.308. Its first discovery exposed 26 tools: `downloads_get`, `downloads_cancel` and `history_remove` were skipped because of root-level `oneOf`. The compatibility fix above keeps exclusive-target validation while exposing plain object input schemas. Regression coverage checks discovery-compatible schemas and rejects missing/ambiguous targets before transport.
+
+A real Codex CLI 0.163.0-alpha.11.2 session used the persisted server entry (no replacement MCP config): `app_status`, `ui_show`, `ui_set_filter` to a temporary audio/search filter, restoration of the original filter, and final `app_status` succeeded. All 56 original record IDs and every history record field were retained; startup applies the existing history ordering. Persistent download preferences were semantically unchanged. Private test transcripts, configuration/state snapshots and the previous installed app are kept only under ignored `build/installation-20261024/` (mode 0700); do not commit them.
+
+After the fix, the installed build 1.4.5 (241026) passes the same five Codex calls. Claude Code's server health check connects successfully, and its real print-mode initialization lists all 29 tools (including the previously excluded three). Model-driven verification is pending user authentication: `claude auth status` reports `loggedIn: false` and a real print-mode run stops with `Not logged in · Please run /login`. The user must complete `claude auth login` on this Mac, then repeat the same status/show/filter/restore sequence using the user-scoped server. Do not report this as a successful Claude model session until actual tool calls are recorded. [Current Claude Code requires macOS 13+](https://code.claude.com/docs/en/setup#system-requirements) independently of Link2Download; the app, CLI and native MCP adapter retain macOS 12 support.

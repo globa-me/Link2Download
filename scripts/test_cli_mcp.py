@@ -170,13 +170,16 @@ class HelperTests(unittest.TestCase):
         for tool in tools.values():
             self.assertEqual(tool["inputSchema"]["type"], "object")
             self.assertFalse(tool["inputSchema"]["additionalProperties"])
+            for keyword in ("oneOf", "anyOf", "allOf"):
+                self.assertNotIn(keyword, tool["inputSchema"], "Claude Code must discover every tool")
             self.assertEqual(tool["outputSchema"]["type"], "object")
             success, failure = tool["outputSchema"]["anyOf"]
             self.assertTrue(success["additionalProperties"])
             self.assertEqual(failure["required"], ["error"])
         self.assertIn("options", tools["transcodes_enqueue"]["inputSchema"]["properties"])
         self.assertIn("maxBytes", tools["diagnostics_logs"]["inputSchema"]["properties"])
-        self.assertIn("oneOf", tools["history_remove"]["inputSchema"])
+        for name in ("downloads_get", "downloads_cancel", "history_remove"):
+            self.assertIn("exactly one of id or operationId", tools[name]["description"])
         self.assertTrue(tools["files_delete"]["annotations"]["destructiveHint"])
         self.assertEqual(replies[2]["error"]["code"], -32602)
 
@@ -188,6 +191,10 @@ class HelperTests(unittest.TestCase):
             ("downloads_get", {}),
             ("downloads_get", {"id": RECORD, "operationId": OPERATION}),
             ("downloads_get", {"id": "bad"}),
+            ("downloads_cancel", {}),
+            ("downloads_cancel", {"id": RECORD, "operationId": OPERATION}),
+            ("history_remove", {}),
+            ("history_remove", {"id": RECORD, "operationId": OPERATION}),
             ("downloads_list", {"limit": True}),
             ("downloads_list", {"limit": 1.5}),
             ("downloads_list", {"limit": 501}),
