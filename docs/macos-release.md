@@ -40,7 +40,7 @@ Recheck the final ZIP-extracted app before installation, stop the installed app 
 
 ### Installed automation preview — 2026-10-24
 
-The Claude Code schema compatibility fix was rebuilt as Universal 2, app version **1.4.5 (241026)**, and installed at `/Applications/Link2Download.app`. The current local bundle and archive are `build/Link2Download.app` and `build/Link2Download-Automation-Preview-macOS.zip`. No new public GitHub binary release was published.
+The Claude Code schema compatibility fix was rebuilt as Universal 2, app version **1.4.5 (241026)**, and installed at `/Applications/Link2Download.app`. At that verification date the local bundle and archive were `build/Link2Download.app` and `build/Link2Download-Automation-Preview-macOS.zip`. No new public GitHub binary release was published on that date.
 
 - Developer ID G2 identity `6E99F92E9A1BA1273CD084FAFE940A7280DB0A30`, team `BN3D9H4C7J`, Hardened Runtime and secure timestamps.
 - Apple notarization profile `GZB-notary`: **Accepted**, submission `f9c88016-d593-4929-99bb-2f6ce4c4aa19`. The ticket was stapled and validated. Source, installed and final ZIP-extracted apps passed signature and Gatekeeper checks as `Notarized Developer ID`.
@@ -53,7 +53,7 @@ To reproduce, use the normal preview commands below with `APP_BUILD=241026`. Any
 
 ### Local automation preview — 2026-10-23
 
-The CLI/MCP implementation has a locally verified Universal 2 preview at `build/Link2Download-Automation-Preview-macOS.zip`. This is not a new GitHub binary release; the public stable release remains 1.4.5. The preview retains app version 1.4.5 with build 231026.
+The CLI/MCP implementation was verified as a local Universal 2 preview at `build/Link2Download-Automation-Preview-macOS.zip`. On that date this was not a new GitHub binary release, and the public stable release was 1.4.5. The preview retained app version 1.4.5 with build 231026.
 
 - App and `Contents/MacOS/link2download-cli` are signed with G2 identity `6E99F92E9A1BA1273CD084FAFE940A7280DB0A30`, team `BN3D9H4C7J`, Hardened Runtime and secure timestamps.
 - Apple notarization using Keychain profile `GZB-notary`: **Accepted**, submission `ea22b552-8fae-49a4-b0be-bb2c3fb6d75a`.
@@ -109,19 +109,21 @@ The scripts verify checksums and required architectures. Deno and yt-dlp receive
 
 ## Prepare credentials
 
-Create an app-specific password in the Apple Account portal, then store it interactively in Keychain:
+On the development Mac, use the existing `GZB-notary` Keychain profile directly. Verify it with `xcrun notarytool history --keychain-profile GZB-notary`. Authentication remains in Keychain.
+
+On a new Mac without this profile, create an app-specific password in the Apple Account portal, then store it interactively in Keychain:
 
 ```bash
-xcrun notarytool store-credentials Link2Download \
+xcrun notarytool store-credentials GZB-notary \
   --apple-id YOUR_APPLE_ID \
   --team-id YOUR_TEAM_ID
 ```
 
-The scripts use the `Link2Download` profile by default. Set `NOTARY_PROFILE` to select another existing profile.
+The scripts use the `GZB-notary` profile by default. Set `NOTARY_PROFILE` to select another existing profile.
 
 Select the G2 leaf certificate with `SIGNING_CERT_SHA1`, its 40-character SHA-1 fingerprint. Names can be identical for old and G2 certificates. `scripts/check_release_signing.sh` checks the leaf issuer OU `G2`, team, validity and usable private key before a signed build replaces any output. It also checks the selected leaf and secure timestamp in signed apps and DMGs. Signed builds using only `SIGNING_IDENTITY` are no longer accepted. Local ad hoc builds remain available with the default `./scripts/build_app.sh` command.
 
-The migration status and pending certificate dependency are recorded in [developer-id-g2-migration.md](developer-id-g2-migration.md).
+The verified G2 configuration and migration history are recorded in [developer-id-g2-migration.md](developer-id-g2-migration.md).
 
 ## Build signed architecture-specific archives
 

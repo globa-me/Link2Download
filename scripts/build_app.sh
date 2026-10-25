@@ -14,7 +14,7 @@ FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
 MODULE_CACHE_DIR="$BUILD_DIR/module-cache"
 MIN_MACOS_VERSION="${MIN_MACOS_VERSION:-12.0}"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
-APP_VERSION="${APP_VERSION:-1.4.5}"
+APP_VERSION="${APP_VERSION:-1.5.0}"
 APP_BUILD="${APP_BUILD:-$(date +%d%m%y)}"
 if [[ "$SIGNING_IDENTITY" != "-" || -n "${SIGNING_CERT_SHA1:-}" ]]; then
   "$ROOT_DIR/scripts/check_release_signing.sh"

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD_DIR="$ROOT_DIR/build"
+BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/build}"
 APP_NAME="Link2Download"
 APP_BUNDLE="$APP_NAME.app"
 APP_PATH="$BUILD_DIR/$APP_BUNDLE"

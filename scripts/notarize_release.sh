@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD_DIR="$ROOT_DIR/build"
+BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/build}"
 APP_PATH="$BUILD_DIR/Link2Download.app"
 DMG_PATH="$BUILD_DIR/Link2Download-Installer.dmg"
-NOTARY_PROFILE="${NOTARY_PROFILE:-Link2Download}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-GZB-notary}"
 "$ROOT_DIR/scripts/check_release_signing.sh"
 SIGNING_IDENTITY="$SIGNING_CERT_SHA1"
 export SIGNING_IDENTITY
@@ -48,7 +48,7 @@ fi
 notarize() {
   local artifact="$1" label="$2" status submission_id
   local receipt="$BUILD_DIR/notary-$label.plist"
-  xcrun notarytool submit "$artifact" --keychain-profile "$NOTARY_PROFILE" --wait --output-format plist > "$receipt"
+  xcrun notarytool submit "$artifact" --keychain-profile "$NOTARY_PROFILE" --wait --timeout 20m --output-format plist > "$receipt"
   status="$(/usr/libexec/PlistBuddy -c 'Print :status' "$receipt")"
   if [[ "$status" != "Accepted" ]]; then
     submission_id="$(/usr/libexec/PlistBuddy -c 'Print :id' "$receipt")"
@@ -58,7 +58,7 @@ notarize() {
   fi
 }
 
-ditto -c -k --keepParent "$APP_PATH" "$BUILD_DIR/Link2Download-notary.zip"
+ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$BUILD_DIR/Link2Download-notary.zip"
 notarize "$BUILD_DIR/Link2Download-notary.zip" app
 xcrun stapler staple "$APP_PATH"
 xcrun stapler validate "$APP_PATH"

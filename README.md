@@ -42,7 +42,7 @@ The macOS app is ready for everyday use. The Windows WPF port is under active de
 
 ## CLI and MCP automation
 
-The current macOS source includes a native CLI and 29 MCP tools for Codex and Claude Code. They control the same queue, history and settings as the app, with background launch and per-job overrides. macOS 12 remains supported; no additional scripting runtime is required. This functionality is unreleased and requires a new source build.
+Version 1.5.0 includes a native CLI and 29 MCP tools for Codex and Claude Code. They control the same queue, history and settings as the app, with background launch and per-job overrides. macOS 12 remains supported; no additional scripting runtime is required.
 
 ```bash
 /Applications/Link2Download.app/Contents/MacOS/link2download-cli --help
@@ -71,9 +71,10 @@ See the [automation guide](docs/automation.md) for installation, client registra
 
 ## Download for macOS
 
-Current stable version: **1.4.5**.
+Current stable version: **1.5.0**.
 
 - [Download Link2Download-Installer.dmg](https://github.com/globa-me/Link2Download/releases/latest/download/Link2Download-Installer.dmg)
+- [Download the Universal 2 ZIP](https://github.com/globa-me/Link2Download/releases/latest/download/Link2Download-1.5.0-macOS-Universal.zip)
 - [View release notes](CHANGELOG.md)
 
 The app is signed with a Developer ID certificate and notarized by Apple. The installer is Universal 2 and supports Apple Silicon and 64-bit Intel Macs.
@@ -158,7 +159,7 @@ The network smoke test uses a clean environment and temporary home directory, wi
 
 The signed and notarized release workflow is documented in [docs/macos-release.md](docs/macos-release.md).
 
-Version 1.4.5 can be built as two separately signed applications for Apple Silicon and Intel:
+Version 1.5.0 can be built as two separately signed applications for Apple Silicon and Intel:
 
 ```bash
 SIGNING_CERT_SHA1='<G2 leaf certificate SHA-1>' ./scripts/build_signed_macos_variants.sh
@@ -170,6 +171,8 @@ This creates architecture-specific apps and ZIP archives under `build/`. The app
 
 - Native SwiftUI interface (light + dark mode)
 - One active download at a time, with history, search, retry and cancellation
+- Cancel running Apple MOV transcoding while keeping the downloaded source
+- Native CLI and 29 MCP tools for Codex and Claude Code
 - Video/audio formats, quality selection, subtitles, extra audio tracks and speed limits
 - Open file, reveal in Finder, copy or open the source URL, and delete downloaded files
 - Browser-cookie source selection for private/watch-later content
@@ -207,8 +210,8 @@ Build outputs:
 - `build/Link2Download-Installer.dmg`
 - `build/macos-arm64/Link2Download.app`
 - `build/macos-x86_64/Link2Download.app`
-- `build/Link2Download-1.4.5-macOS-Apple-Silicon.zip`
-- `build/Link2Download-1.4.5-macOS-Intel.zip`
+- `build/Link2Download-1.5.0-macOS-Apple-Silicon.zip`
+- `build/Link2Download-1.5.0-macOS-Intel.zip`
 - `build/Enable_Link2Download.command`
 
 ## Windows port
