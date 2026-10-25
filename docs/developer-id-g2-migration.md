@@ -2,7 +2,7 @@
 
 ## Status
 
-G2 signing is available and verified on this Mac. Installed previews were signed, notarized and stapled on 2026-10-23 and 2026-10-24. Public release 1.5.0 is being prepared on 2026-10-25; its final publication and verification results belong in [macos-release.md](macos-release.md).
+G2 signing is available and verified on this Mac. Installed previews were signed, notarized and stapled on 2026-10-23 and 2026-10-24. [Public release 1.5.0](https://github.com/globa-me/Link2Download/releases/tag/v1.5.0) was published on 2026-10-25 with G2-signed, notarized Universal 2 DMG and ZIP assets. Final checksums, notarization IDs and actual downloaded-asset verification are recorded in [macos-release.md](macos-release.md#public-release-150--2026-10-25).
 
 - Certificate: `Developer ID Application: Gennadiy Zakharov (BN3D9H4C7J)`.
 - Team: `BN3D9H4C7J`.

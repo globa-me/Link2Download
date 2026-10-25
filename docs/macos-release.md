@@ -4,6 +4,44 @@ This document describes the current Developer ID release process. Version-specif
 
 ## Current release verification
 
+### Public release 1.5.0 — 2026-10-25
+
+[Link2Download 1.5.0](https://github.com/globa-me/Link2Download/releases/tag/v1.5.0) is published as the latest stable release. The annotated `v1.5.0` tag points to source commit `93052d7d004dab68dfabc13089d4b16e2ae1e659` ([release PR #4](https://github.com/globa-me/Link2Download/pull/4)). The Universal 2 app is **1.5.0 (251026)** with macOS 12 deployment targets, the native CLI and all 29 MCP tools.
+
+Public assets:
+
+| Asset | SHA-256 |
+| --- | --- |
+| `Link2Download-Installer.dmg` | `7873bfabf54cd2c05b3eae7e91e929f5d603c4e294148f48bbd11c82c493ba96` |
+| `Link2Download-1.5.0-macOS-Universal.zip` | `6758b444ffd0a92c818bb310876139c8aff94df8c5bad10c9cb664a6e26e4e24` |
+
+`SHA256SUMS.txt` contains both filenames and digests. Local final assets, receipts and private verification logs are under ignored `build/release-1.5.0-final/`. The earlier `build/release-1.5.0/` directory contains an interrupted duplicate build and is not the release source.
+
+- App and DMG use Developer ID G2 leaf `6E99F92E9A1BA1273CD084FAFE940A7280DB0A30`, team `BN3D9H4C7J`, secure timestamps and the app's required Hardened Runtime entitlements.
+- Apple profile `GZB-notary`: app **Accepted**, submission `7cc444c7-a286-4609-b56d-adeddaa1f43c`; DMG **Accepted**, submission `087af1d9-2682-4056-9699-f32020e98fe5`. Both tickets were stapled and validated. The final ZIP was created after app stapling.
+- ARM64 and Intel under Rosetta passed domain automation and deterministic transcode cancellation. Retry/history, process runner, process-error checks, 12 CLI/MCP protocol tests and eight deployment-checker fixtures passed. All 109 packaged Mach-O images support both architectures with minimum OS <= macOS 12.
+- The signed app passed the offline real-runtime suite on both architectures: video/M4A/MOV, cancellation after actual VideoToolbox progress, native MCP, persistence and shutdown/restart. Clean-environment short YouTube downloads and merges passed on both architectures. GitHub PR checks passed for macOS and Windows.
+- The mounted final DMG passed filesystem, layout, app/helper versions, both helper architectures, nested signature/ticket and Gatekeeper checks. An app copied out of it passed the ARM64 live runtime suite.
+- All three published assets were downloaded from GitHub into `github-download/`. Their bytes match the local verified files, GitHub asset digests and `SHA256SUMS.txt`. Download quarantine was applied to the DMG and retained during its repeated signature, ticket, layout and mounted-app checks. The app copied from this downloaded DMG passed the ARM64 live suite, including running hardware-transcode cancellation. The downloaded ZIP-extracted app passed signature, stapled-ticket and Gatekeeper checks.
+- Host: macOS 26.7.1 on Apple Silicon. Actual macOS 12, physical Intel and a clean-Mac graphical drag-install were not tested. The earlier accepted Claude model-verification waiver remains in effect; no authenticated Claude model session is claimed.
+
+Reproduce the local packaging with the known identity/profile (a rebuild receives new signatures, notarization IDs and checksums; do not overwrite already published assets):
+
+```bash
+release_output="$PWD/build/release-1.5.0-final"
+BUILD_DIR="$release_output" APP_VERSION=1.5.0 APP_BUILD=251026 \
+  SIGNING_CERT_SHA1=6E99F92E9A1BA1273CD084FAFE940A7280DB0A30 ./scripts/build_app.sh
+python3 scripts/check_macos_compatibility.py "$release_output/Link2Download.app"
+python3 scripts/test_automation_live.py --app "$release_output/Link2Download.app" --arch arm64
+python3 scripts/test_automation_live.py --app "$release_output/Link2Download.app" --arch x86_64
+BUILD_DIR="$release_output" SKIP_BUILD=1 NOTARY_PROFILE=GZB-notary \
+  SIGNING_CERT_SHA1=6E99F92E9A1BA1273CD084FAFE940A7280DB0A30 ./scripts/notarize_release.sh
+ditto -c -k --sequesterRsrc --keepParent "$release_output/Link2Download.app" "$release_output/Link2Download-1.5.0-macOS-Universal.zip"
+(cd "$release_output" && shasum -a 256 Link2Download-Installer.dmg Link2Download-1.5.0-macOS-Universal.zip > SHA256SUMS.txt)
+```
+
+For a future release, select a new version/tag, repeat runtime and packaging checks, and verify the actual uploaded assets after downloading them. Never reuse a notarization ticket for changed code.
+
 ### Installed transcode cancellation update — 2026-10-24
 
 The transcode cancellation fix is installed and running at `/Applications/Link2Download.app` as **1.4.5 (241026.1)**, Universal 2. Its bundle and final ZIP are `build/transcode-cancellation/Link2Download.app` and `build/transcode-cancellation/Link2Download-Transcode-Cancellation-macOS.zip`. No public GitHub release was published.
