@@ -1,6 +1,6 @@
 # macOS CLI and MCP automation
 
-The macOS app includes a native `link2download` helper. CLI commands and MCP tools control the same queue, history and preferences as the window. No Python, Node.js, Homebrew or separate MCP runtime is required by users. This is source functionality under **Unreleased**; an older installed release does not include the helper.
+The macOS app includes a native `link2download` helper starting with **1.5.0**. CLI commands and MCP tools control the same queue, history and preferences as the window. No Python, Node.js, Homebrew or separate MCP runtime is required by users. Older public releases do not include the helper.
 
 ## Start with the CLI
 
@@ -23,7 +23,7 @@ The examples below use `link2download`. Using the absolute bundled path works eq
 
 The helper connects to the running app or starts it with `--background-control` without showing a window. `--no-launch` makes a missing app connection an error. MCP initialization and tool discovery do not launch the app; the first tool call can. A normal logged-in macOS session is required; browser/Keychain permissions may still display system prompts.
 
-Quit older running copies before installing/starting an automation-enabled build. The published 1.4.5 installer predates the helper; use a new source build or the separately verified local automation preview.
+Quit older running copies before installing/starting an automation-enabled build. Install the [1.5.0 macOS installer](https://github.com/globa-me/Link2Download/releases/tag/v1.5.0) or build from source; the 1.4.5 installer predates the helper.
 
 Closing a terminal, interrupting a waiting CLI, or disconnecting an MCP client leaves accepted jobs running. Closing the app window also keeps the app running. `app quit` refuses while work is pending; `app quit --force` cancels pending work and quits after workers stop. A process crash or restart does not resume jobs: interrupted records are marked failed and can be retried.
 
@@ -296,9 +296,9 @@ The helper ships at `Link2Download.app/Contents/MacOS/link2download-cli` and is 
 
 The `-cli` suffix is intentional: on default case-insensitive APFS, a helper named `link2download` overwrites the app executable `Link2Download`. A PATH symlink may still be named `link2download` outside the bundle.
 
-This implementation does not itself constitute a new signed/notarized public release. Keep actual build, runtime, client-session and release verification results in the release/handoff documentation when those checks are completed.
+Version 1.5.0 packages the helper and app together in the Universal 2 DMG and ZIP. Actual signing, notarization, runtime and publication checks are recorded in the [release runbook](macos-release.md).
 
-A local Universal 2 preview was Developer ID signed, accepted by Apple notarization and stapled on 2026-10-23. Its checksum, verification limits and reproduction commands are recorded in the [release runbook](macos-release.md#local-automation-preview--2026-10-23). No new public GitHub binary release was published.
+A local Universal 2 preview was Developer ID signed, accepted by Apple notarization and stapled on 2026-10-23. Its historical checksum, verification limits and reproduction commands are recorded in the [release runbook](macos-release.md#local-automation-preview--2026-10-23). That preview was not published as a new public GitHub release.
 
 
 ## Installed client verification — 2026-10-24

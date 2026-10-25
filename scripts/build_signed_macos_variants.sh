@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_ROOT="$ROOT_DIR/build"
-APP_VERSION="${APP_VERSION:-1.4.5}"
+APP_VERSION="${APP_VERSION:-1.5.0}"
 APP_BUILD="${APP_BUILD:-$(date +%d%m%y)}"
 "$ROOT_DIR/scripts/check_release_signing.sh"
 SIGNING_IDENTITY="$SIGNING_CERT_SHA1"
