@@ -54,6 +54,34 @@ struct ResponsiveSnapshotRenderer {
             )
             print(destination.path)
         }
+
+        // Exercise the longer localized cancellation action with a real source
+        // path, so both source actions and the transcode cancellation are shown.
+        settings.language = .russian
+        settings.smartModeEnabled = true
+        let source = historyDirectory.appendingPathComponent("source.mp4")
+        try Data("snapshot fixture".utf8).write(to: source)
+        var record = DownloadRecord(sourceURL: "https://example.org/video", serviceName: "YouTube",
+            title: "Аппаратное перекодирование", durationSeconds: 363, status: .downloading,
+            progress: 0.6, downloadProgress: 1, processingProgress: 0.2,
+            statusMessage: settings.t("progress.appleHWTranscode"), kind: .video,
+            qualityLabel: "1920×1080", outputFormat: "MP4", filePath: source.path,
+            processingStage: .hardwareTranscode, operationType: .download, transcodeSourcePath: source.path)
+        manager.records = [record]
+        for width in [CGFloat(640), CGFloat(1320)] {
+            let destination = outputDirectory.appendingPathComponent("transcode-active-\(Int(width)).png")
+            try render(MainView(settings: settings, manager: manager),
+                size: NSSize(width: width, height: 700), destination: destination)
+            print(destination.path)
+        }
+        record.status = .cancelled
+        record.processingStage = nil
+        record.processingProgress = nil
+        manager.records = [record]
+        let destination = outputDirectory.appendingPathComponent("transcode-cancelled.png")
+        try render(MainView(settings: settings, manager: manager),
+            size: NSSize(width: 900, height: 700), destination: destination)
+        print(destination.path)
     }
 
     private static func render<Content: View>(

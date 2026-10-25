@@ -122,6 +122,44 @@ def main():
             assert audio_record["kind"] == "audio" and audio_record["outputFormat"] == "M4A", audio_record
             print("PASS: real Apple MOV copy and M4A extraction", flush=True)
 
+            # Make the isolated downloaded source long enough to cancel after
+            # VideoToolbox emits actual progress, rather than only while queued.
+            vp9 = root / "vp9.webm"
+            subprocess.run(prefix + [str(runtime / "ffmpeg"), "-hide_banner", "-loglevel", "error",
+                            "-f", "lavfi", "-i", "color=c=blue:s=640x360:r=30", "-t", "1",
+                            "-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "8", str(vp9)],
+                           check=True, timeout=30)
+            source = Path(video["filePath"])
+            subprocess.run(prefix + [str(runtime / "ffmpeg"), "-hide_banner", "-loglevel", "error",
+                            "-y", "-stream_loop", "-1", "-i", str(vp9), "-t", "900", "-c", "copy", str(source)],
+                           check=True, timeout=30)
+            original_bytes = source.read_bytes()
+            cancelling = cli("transcode", "add", video["id"], "--request-id", "live-cancel-transcode")
+            cancel_id = cancelling["operationId"]
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                snapshot = cli("download", "get", "--operation-id", cancel_id)
+                active = snapshot["records"][0]
+                if active.get("processingStage") == "hardwareTranscode" and active.get("processingProgress", 0) > 0.01:
+                    break
+                assert not snapshot["terminal"], snapshot
+                time.sleep(0.05)
+            else:
+                raise AssertionError("Hardware transcode did not emit progress")
+            cancel_started = time.monotonic()
+            cli("download", "cancel", "--operation-id", cancel_id)
+            while time.monotonic() - cancel_started < 10:
+                snapshot = cli("download", "get", "--operation-id", cancel_id)
+                if snapshot["terminal"]:
+                    break
+                time.sleep(0.1)
+            assert snapshot["terminal"] and not snapshot["stopping"], snapshot
+            cancelled = snapshot["records"][0]
+            assert cancelled["status"] == "cancelled" and cancelled.get("processingStage") is None, cancelled
+            assert source.read_bytes() == original_bytes, "Cancellation changed the downloaded source"
+            assert not list(source.parent.glob(".*.tmp.mov")), "Cancelled MOV was retained"
+            print("PASS: running VideoToolbox cancellation, bounded stop, source retained, temporary MOV removed", flush=True)
+
             # Real stdio connection through the app; keep stdin open to catch buffering hangs.
             mcp = subprocess.Popen(prefix + [str(helper), "--no-launch", "mcp", "serve"], env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             def rpc(message):

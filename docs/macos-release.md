@@ -4,6 +4,40 @@ This document describes the current Developer ID release process. Version-specif
 
 ## Current release verification
 
+### Installed transcode cancellation update — 2026-10-24
+
+The transcode cancellation fix is installed and running at `/Applications/Link2Download.app` as **1.4.5 (241026.1)**, Universal 2. Its bundle and final ZIP are `build/transcode-cancellation/Link2Download.app` and `build/transcode-cancellation/Link2Download-Transcode-Cancellation-macOS.zip`. No public GitHub release was published.
+
+- Developer ID G2 identity `6E99F92E9A1BA1273CD084FAFE940A7280DB0A30`, team `BN3D9H4C7J`, Hardened Runtime and secure timestamps.
+- Apple profile `GZB-notary`: **Accepted**, submission `e327ef3f-805a-45f5-adbe-88c106085344`. Stapling/validation, signature verification and Gatekeeper passed for the source app, installed app and final ZIP-extracted app (`Notarized Developer ID`).
+- Final ZIP was recreated after stapling. SHA-256: `9fc2a59960d88430aaf69a9107a28205afc574d95b0c8b0abf532fedb7464fbd`.
+- The signed build passed the isolated live suite on **ARM64 and Intel under Rosetta**, including cancellation after actual VideoToolbox progress, unchanged source bytes, temporary MOV cleanup, CLI/MCP, video/M4A/MOV, persistence and shutdown/restart. Deterministic cancellation fixtures passed on both architectures. Automation, retry/history, process runner, 12 CLI/MCP protocol checks, eight compatibility fixtures and nine UI snapshots passed. All 109 bundled Mach-O images retain minimum macOS <= 12. Actual macOS 12 and physical Intel were not tested.
+- The old app quit without forcing/cancelling work. The new installed build reports 57 history records and a visible window through the existing MCP connection. All 57 record IDs and every persisted record field were retained, and download settings are semantically unchanged.
+- Previous apps and private before/after state snapshots are kept under ignored `build/transcode-cancellation/installation/` (directory mode 0700). Do not commit them or the submission ZIP/notary receipt.
+
+Reproduce from the repository root (the notarization ID and checksum above apply only to this actual build):
+
+```bash
+./scripts/test_transcode_cancellation.sh
+TEST_ARCH=x86_64 ./scripts/test_transcode_cancellation.sh
+SIGNING_CERT_SHA1=6E99F92E9A1BA1273CD084FAFE940A7280DB0A30 \
+  APP_BUILD=241026.1 BUILD_DIR="$PWD/build/transcode-cancellation" ./scripts/build_app.sh
+python3 scripts/check_macos_compatibility.py build/transcode-cancellation/Link2Download.app
+python3 scripts/test_automation_live.py --app build/transcode-cancellation/Link2Download.app --arch arm64
+python3 scripts/test_automation_live.py --app build/transcode-cancellation/Link2Download.app --arch x86_64
+ditto -c -k --sequesterRsrc --keepParent build/transcode-cancellation/Link2Download.app build/transcode-cancellation/submission.zip
+xcrun notarytool submit build/transcode-cancellation/submission.zip --keychain-profile GZB-notary --wait --timeout 20m
+# Continue only after Accepted.
+xcrun stapler staple build/transcode-cancellation/Link2Download.app
+xcrun stapler validate build/transcode-cancellation/Link2Download.app
+codesign --verify --strict --verbose=2 build/transcode-cancellation/Link2Download.app
+spctl --assess --type execute --verbose=4 build/transcode-cancellation/Link2Download.app
+ditto -c -k --sequesterRsrc --keepParent build/transcode-cancellation/Link2Download.app build/transcode-cancellation/Link2Download-Transcode-Cancellation-macOS.zip
+shasum -a 256 build/transcode-cancellation/Link2Download-Transcode-Cancellation-macOS.zip
+```
+
+Recheck the final ZIP-extracted app before installation, stop the installed app only when idle, and retain a rollback copy and state snapshots. See [cancellation architecture and checks](automation.md#transcode-cancellation--2026-10-24) before changing worker lifetime or output commit behavior.
+
 ### Installed automation preview — 2026-10-24
 
 The Claude Code schema compatibility fix was rebuilt as Universal 2, app version **1.4.5 (241026)**, and installed at `/Applications/Link2Download.app`. The current local bundle and archive are `build/Link2Download.app` and `build/Link2Download-Automation-Preview-macOS.zip`. No new public GitHub binary release was published.

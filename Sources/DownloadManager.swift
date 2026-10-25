@@ -634,6 +634,7 @@ final class DownloadManager: ObservableObject {
     }
 
     private func runDownload(_ request: QueuedDownloadRequest) async {
+        defer { service.finishTask(taskID: request.recordID) }
         let requiresAppleProcessing = requiresAppleProcessing(for: request)
         do {
             diagnostics.log(
@@ -728,6 +729,7 @@ final class DownloadManager: ObservableObject {
                 subtitlesWarning = nil
             }
 
+            try service.checkCancellation(taskID: request.recordID)
             if requiresAppleProcessing {
                 await stageCompletedFilesForProcessing(files, for: request)
             } else {
@@ -951,6 +953,7 @@ final class DownloadManager: ObservableObject {
                     DispatchQueue.main.async {
                         guard let self else { return }
                         self.updateRecord(request.recordID) { record in
+                            guard record.status == .downloading else { return }
                             let stage = self.processingStage(from: message)
                             if !message.isEmpty {
                                 record.statusMessage = self.localizedProgressMessage(message)
@@ -971,6 +974,7 @@ final class DownloadManager: ObservableObject {
     }
 
     private func runTranscode(_ request: QueuedTranscodeRequest) async {
+        defer { service.finishTask(taskID: request.recordID) }
         do {
             diagnostics.log(
                 .info,
@@ -992,6 +996,7 @@ final class DownloadManager: ObservableObject {
                         DispatchQueue.main.async {
                             guard let self else { return }
                             self.updateRecord(request.recordID) { record in
+                                guard record.status == .downloading else { return }
                                 if let progress {
                                     let clamped = max(0.0, min(progress, 1.0))
                                     record.processingProgress = max(record.processingProgress ?? 0.0, clamped)

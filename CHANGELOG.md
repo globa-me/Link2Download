@@ -4,6 +4,7 @@
 
 ### macOS
 
+- Allow cancellation throughout Apple MOV processing, including running hardware transcoding; retain the downloaded source, remove unfinished MOV files, and show a dedicated cancellation action and source-retention message.
 - Add a bundled native CLI and 29 MCP tools for downloads, playlist operations, Apple MOV copies, settings, history, file/source actions, diagnostics and window controls.
 - Share app-owned state across GUI, CLI and MCP; support background launch, structured progress/errors, per-job settings, persisted operation IDs and idempotent enqueue requests.
 - Preserve macOS 12 support with a dependency-free stdio adapter; add isolated protocol/CLI and domain regression checks and an [automation guide](docs/automation.md).

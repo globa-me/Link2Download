@@ -238,6 +238,7 @@ python3 scripts/test_cli_mcp.py --binary "$PWD/build/link2download" -v
 ./scripts/test_automation.sh
 ./scripts/test_retry_history.sh
 ./scripts/test_runtime_process.sh
+./scripts/test_transcode_cancellation.sh
 ./scripts/test_process_error_message.sh
 ./scripts/build_app.sh
 python3 scripts/check_macos_compatibility.py build/Link2Download.app
@@ -248,6 +249,16 @@ python3 scripts/test_automation_live.py --app build/Link2Download.app --arch x86
 `build_cli.sh` defaults to Universal 2 and macOS 12; `TARGET_ARCH=arm64` or `TARGET_ARCH=x86_64` selects a single architecture. Python 3 is used by development tests only. The 12 protocol/CLI tests use an isolated fake same-user Unix server and do not launch or mutate a real app. They cover all command mappings, version negotiation, structured results/errors, invalid types/UTF-8/oversized input, notifications, open-stdin response liveness, SIGINT, wait/watch/timeouts and no automatic replay. In particular, use POSIX stdin reads: Foundation's buffered read previously held a response until the pipe filled or closed.
 
 `test_automation_live.py` requires a built app and a logged-in GUI session. It generates a one-second A/V fixture and serves it over local HTTP/HLS, exercising the actual bundled runtime without visiting external media sites or accessing browser cookies. State, diagnostics, settings suites and Unix endpoints are isolated. The optional `--sdk-check /path/to/check.mjs` hook runs an external official-SDK smoke script; Node is not needed for the default test or end-user app.
+
+### Transcode cancellation — 2026-10-24
+
+The row action changes to **Cancel transcoding** during queued/running Apple MOV processing (including hardware encoding). The existing `downloads.cancel` command/MCP tool also cancels this phase. The record becomes cancelled; poll until `terminal=true` and `stopping=false` before retrying. The downloaded source remains available through Open File/Show in Finder for automatic in-place conversions; a cancelled copy retains its separate source record. Retry reuses the local `transcodeSourcePath` without downloading again. No preference/history format or wire contract changed.
+
+Cancellation is latched for the entire worker, including optional `ffprobe` calls, encoder startup/fallback and output probing. `runProcess` must never clear it: only `DownloadManager.runDownload`/`runTranscode` release the latch with `finishTask` when their worker exits. The runner owns SIGTERM and escalates to SIGKILL after three seconds. MOV output is probed while temporary; commit is serialized with cancellation, so an accepted cancellation before commit preserves the source and removes the temporary `.tmp.mov`. Once the output is committed, the conversion has succeeded. Late progress callbacks ignore terminal records.
+
+`test_transcode_cancellation.sh` uses deterministic subprocess fixtures for cancellation before launch, during a probe, between probes and encoding, during a running encoder that ignores SIGTERM, before commit and during output probing. Every case verifies unchanged source bytes, no leftover MOV, stopped encoder, no software fallback and successful retry with the same task ID. `TEST_ARCH=x86_64` runs the fixture checks under Rosetta on Apple Silicon. The live integration test additionally cancels actual VideoToolbox encoding after progress exceeds 1%, and checks terminal/stopping flags, source bytes and temporary cleanup. It uses only isolated local media/state.
+
+The fixture checks passed on ARM64 and Intel under Rosetta, alongside automation, retry/history, process runner, 12 CLI/MCP protocol tests and eight compatibility-checker fixtures. CI now includes the deterministic cancellation regression. A Universal 2 app was built with macOS 12 targets; all 109 bundled Mach-O images passed the minimum-OS checker. The final Developer ID signed build passed the offline live test on ARM64 and Intel under Rosetta, including actual hardware cancellation. Nine UI snapshots include active/cancelled processing and the longer Russian action at narrow and wide window widths. Actual macOS 12 and physical Intel runtime verification remain outstanding; release/install results are recorded separately in [macos-release.md](macos-release.md).
 
 ### Verification on 2026-10-23
 

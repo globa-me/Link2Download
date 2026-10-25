@@ -16,6 +16,7 @@ For macOS logic changes, run:
 ```bash
 ./scripts/test_retry_history.sh
 ./scripts/test_runtime_process.sh
+./scripts/test_transcode_cancellation.sh
 ```
 
 For Windows changes, run on Windows with the .NET 8 SDK:

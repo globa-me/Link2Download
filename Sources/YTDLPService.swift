@@ -141,6 +141,18 @@ final class YTDLPService: @unchecked Sendable {
         // Do not signal a Process concurrently with its launch/exit here.
     }
 
+    // Cancellation belongs to the whole worker, including optional probes and
+    // transitions between processes. Only its owner may release it on exit.
+    func finishTask(taskID: UUID) {
+        processLock.lock()
+        cancelledTaskIDs.remove(taskID)
+        processLock.unlock()
+    }
+
+    func checkCancellation(taskID: UUID) throws {
+        if isCancelled(taskID: taskID) { throw DownloadError.cancelled }
+    }
+
     func fetchThumbnailData(urlString: String) -> Data? {
         guard let url = URL(string: urlString) else { return nil }
         var request = URLRequest(url: url)
@@ -527,6 +539,7 @@ final class YTDLPService: @unchecked Sendable {
         replaceOriginal: Bool,
         onProgress: @escaping (_ percent: Double?, _ message: String, _ transfer: DownloadTransferProgress?) -> Void
     ) throws -> AppleConversionResult {
+        try checkCancellation(taskID: taskID)
         let sourceURL = URL(fileURLWithPath: sourcePath)
         guard fileManager.fileExists(atPath: sourceURL.path) else {
             throw DownloadError.processFailed("Source file not found: \(sourceURL.lastPathComponent)")
@@ -982,6 +995,7 @@ final class YTDLPService: @unchecked Sendable {
         let sourceVideoBitrate = probeVideoBitrateInBps(for: sourceURL, tools: tools, taskID: taskID)
         let sourceAudioBitrate = probeStreamBitrateInBps(for: sourceURL, streamSpecifier: "a:0", tools: tools, taskID: taskID)
         let sourceDimensions = probeVideoDimensions(for: sourceURL, tools: tools, taskID: taskID)
+        try checkCancellation(taskID: taskID)
 
         let videoMode: AppleVideoConversionMode = isAppleNativeVideoCodec(sourceVideoCodec) ? .copy : .h264VideoToolbox
         let copyAudio = isAppleNativeAudioCodec(sourceAudioCodec)
@@ -1038,17 +1052,19 @@ final class YTDLPService: @unchecked Sendable {
             )
         }
 
-        if fileManager.fileExists(atPath: outputURL.path) {
-            try fileManager.removeItem(at: outputURL)
-        }
+        // Probe before committing: cancelling a probe must still retain the
+        // original file and remove the incomplete conversion in the defer above.
+        let outputVideoBitrate = probeVideoBitrateInBps(for: tempURL, tools: tools, taskID: taskID)
+        // Serialize the short commit with cancel(). Once committed, conversion
+        // has succeeded; before then, cancellation always preserves the source.
+        processLock.lock()
+        defer { processLock.unlock() }
+        guard !cancelledTaskIDs.contains(taskID) else { throw DownloadError.cancelled }
         try fileManager.moveItem(at: tempURL, to: outputURL)
         tempURLMovedToOutput = true
-
         if replaceOriginal, sourceURL.path != outputURL.path {
             try? fileManager.removeItem(at: sourceURL)
         }
-
-        let outputVideoBitrate = probeVideoBitrateInBps(for: outputURL, tools: tools, taskID: taskID)
         return AppleConversionResult(
             outputPath: outputURL.path,
             sourceVideoBitrateBps: sourceVideoBitrate,
@@ -1761,10 +1777,7 @@ final class YTDLPService: @unchecked Sendable {
         onStdoutLine: ((String) -> Void)? = nil,
         onStderrLine: ((String) -> Void)? = nil
     ) throws -> (exitCode: Int32, stdout: String, stderr: String) {
-        if let taskID, isCancelled(taskID: taskID) {
-            clearCancellation(taskID: taskID)
-            throw DownloadError.cancelled
-        }
+        if let taskID { try checkCancellation(taskID: taskID) }
 
         let startedAt = Date()
         let process = Process()
@@ -1817,7 +1830,6 @@ final class YTDLPService: @unchecked Sendable {
                 }
             )
         } catch {
-            if let taskID { clearCancellation(taskID: taskID) }
             diagnostics.log(.error, "Process stopped; task=\(taskID?.uuidString ?? "-") exec=\(executable.lastPathComponent) error=\(error.localizedDescription)")
             throw error
         }
@@ -1892,11 +1904,5 @@ final class YTDLPService: @unchecked Sendable {
         let cancelled = cancelledTaskIDs.contains(taskID)
         processLock.unlock()
         return cancelled
-    }
-
-    private func clearCancellation(taskID: UUID) {
-        processLock.lock()
-        cancelledTaskIDs.remove(taskID)
-        processLock.unlock()
     }
 }

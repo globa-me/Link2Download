@@ -215,7 +215,7 @@ struct MainView: View {
                                 }
 
                                 if record.status == .queued || record.status == .downloading {
-                                    Button(settings.t("action.cancel")) {
+                                    Button(settings.t(record.isTranscodeTask ? "action.cancelTranscode" : "action.cancel")) {
                                         manager.cancel(recordID: record.id)
                                     }
                                 }
@@ -632,7 +632,11 @@ struct DownloadRowView: View {
             } else if record.status == .failed, let error = record.errorMessage {
                 statusBanner(text: error, color: .red, systemImage: "exclamationmark.triangle.fill")
             } else if record.status == .cancelled {
-                statusBanner(text: settings.t("row.status.cancelledHint"), color: .gray, systemImage: "xmark.circle.fill")
+                statusBanner(
+                    text: settings.t(record.isTranscodeTask && hasValidTranscodeSource ? "row.status.transcodeCancelledHint" : "row.status.cancelledHint"),
+                    color: .gray,
+                    systemImage: "xmark.circle.fill"
+                )
             } else if record.status == .completed && record.statusMessage != settings.t("row.status.completed") {
                 statusBanner(text: record.statusMessage, color: .orange, systemImage: "exclamationmark.circle.fill")
             }
@@ -713,7 +717,7 @@ struct DownloadRowView: View {
 
             if record.status == .queued || record.status == .downloading {
                 rowActionButton(
-                    title: settings.t("action.cancel"),
+                    title: settings.t(record.isTranscodeTask ? "action.cancelTranscode" : "action.cancel"),
                     systemImage: "xmark.circle",
                     emphasized: false,
                     action: onCancel
@@ -763,7 +767,7 @@ struct DownloadRowView: View {
 
             if record.status == .queued || record.status == .downloading {
                 Divider()
-                Button(settings.t("action.cancel"), action: onCancel)
+                Button(settings.t(record.isTranscodeTask ? "action.cancelTranscode" : "action.cancel"), action: onCancel)
             }
 
             if record.status == .failed || record.status == .cancelled {
@@ -790,6 +794,11 @@ struct DownloadRowView: View {
 
     private var hasValidFile: Bool {
         guard let path = record.filePath else { return false }
+        return FileManager.default.fileExists(atPath: path)
+    }
+
+    private var hasValidTranscodeSource: Bool {
+        guard let path = record.transcodeSourcePath else { return false }
         return FileManager.default.fileExists(atPath: path)
     }
 
@@ -1064,6 +1073,7 @@ struct DownloadRowView: View {
                 )
         }
         .buttonStyle(.plain)
+        .help(title)
     }
 
     private var metadataBadges: some View {

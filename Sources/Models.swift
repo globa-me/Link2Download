@@ -313,6 +313,10 @@ struct DownloadRecord: Identifiable, Codable {
     var attemptPreferences: DownloadPreferences?
     var attemptProfile: ResolvedDownloadProfile?
 
+    var isTranscodeTask: Bool {
+        operationType == .transcodeCopy || transcodeSourcePath != nil
+    }
+
     init(
         id: UUID = UUID(),
         sourceURL: String,

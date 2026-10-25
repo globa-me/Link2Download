@@ -39,6 +39,8 @@ jobs:
         run: ./scripts/test_retry_history.sh
       - name: Test runtime process handling
         run: ./scripts/test_runtime_process.sh
+      - name: Test transcode cancellation and source retention
+        run: ./scripts/test_transcode_cancellation.sh
 
   windows:
     name: Windows tests

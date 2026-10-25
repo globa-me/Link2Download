@@ -147,6 +147,7 @@ python3 scripts/test_cli_mcp.py --binary "$PWD/build/link2download" -v
 ./scripts/test_automation.sh
 ./scripts/test_retry_history.sh
 ./scripts/test_runtime_process.sh
+./scripts/test_transcode_cancellation.sh
 ./scripts/test_process_error_message.sh
 TEST_ARCH=x86_64 YTDLP_BIN="$PWD/build/macos-x86_64/Link2Download.app/Contents/Resources/bin/yt-dlp" ./scripts/test_youtube_runtime.sh
 ```
